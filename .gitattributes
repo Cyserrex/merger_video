@@ -1,0 +1,14 @@
+# Normalisasi akhir baris supaya diff tidak penuh perubahan palsu.
+* text=auto
+
+# Batch harus CRLF: cmd.exe bisa salah membaca baris ber-LF, terutama pada
+# blok if/for berkurung yang dipakai skrip build di sini.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Kompiler Inno Setup membaca .iss sebagai berkas Windows.
+*.iss text eol=crlf
+
+*.ico binary
+*.png binary
+*.exe binary
