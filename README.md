@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# merger_video
-=======
 # Video Merger
 
 Aplikasi Windows untuk menggabungkan **semua video dalam satu folder menjadi satu file**,
@@ -19,9 +16,9 @@ Ada dua cara, keduanya sah:
 | Berkas | Untuk siapa |
 |---|---|
 | **`VideoMerger-1.1.0-Setup.exe`** — installer | Pemakaian biasa. Membuat pintasan Start Menu / Desktop, terdaftar di *Apps & features*, bisa dihapus rapi. Bisa dipasang **tanpa hak administrator** — pilih "Pasang hanya untuk saya". |
-| **`VideoMerger.exe`** — satu file, tanpa pasang | Dijalankan dari flashdisk atau folder jaringan, atau di PC yang melarang pemasangan. Tinggal klik dua kali. |
+| **`VideoMerger.exe`** — satu file 195 KB, tanpa pasang | Dijalankan dari flashdisk atau folder jaringan, atau di PC yang melarang pemasangan. Tinggal klik dua kali. |
 
-Keduanya tersedia di [halaman Releases](../../releases).
+Keduanya tersedia di [halaman Releases](../../releases). Installernya 2 MB.
 
 > Aplikasi ini belum ditandatangani secara digital, jadi Windows SmartScreen mungkin
 > menampilkan peringatan saat pertama dijalankan. Klik **More info → Run anyway**.
@@ -94,7 +91,11 @@ memuat baris berbahasa asing, jadi membakarnya menghasilkan video yang hampir ta
 
 ### Syarat
 
-- Windows 10 / 11 (64-bit)
+- **Windows 7 SP1 ke atas** (32-bit maupun 64-bit)
+- **.NET Framework 4.8**. Sudah ikut Windows 10 versi 1903 ke atas dan Windows 11,
+  jadi hampir semua PC sekarang tidak perlu memasang apa pun. Pada Windows 7 SP1 /
+  8.1 perlu dipasang sekali dari Microsoft (gratis) — installernya memeriksa ini
+  dan menawarkan halaman unduhannya kalau belum ada.
 - **FFmpeg**. Aplikasi mencarinya otomatis. Kalau belum ada, saat pertama dijalankan
   aplikasi menawarkan untuk **mengunduhnya sendiri** (sekali saja, unduhan ±80 MB
   yang menempati ±170 MB di `%APPDATA%\vmerge`).
@@ -249,26 +250,36 @@ Jalankan `VideoMerger.exe --help` untuk daftar lengkap.
 
 ## Membangun ulang dari sumber
 
-Syarat: Python 3.9+ terpasang dan tercentang "Add Python to PATH".
+Syarat:
 
 ```bat
-build_exe.bat
+winget install Microsoft.DotNet.SDK.8
+winget install Microsoft.DotNet.Framework.DeveloperPack_4
 ```
 
-Skrip ini membuat virtualenv, memasang PyInstaller, membuat ikon, lalu menghasilkan
-`dist\VideoMerger.exe` (±11 MB).
-
-Untuk versi **portabel penuh** yang sudah memuat FFmpeg di dalamnya (ukurannya jadi
-ratusan MB, tapi jalan di komputer tanpa FFmpeg sama sekali):
+Lalu:
 
 ```bat
-build_exe.bat --with-ffmpeg
-build_exe.bat --with-ffmpeg "C:\path\ke\ffmpeg\bin"
+build.bat          REM bangun saja
+build.bat test     REM bangun lalu jalankan 87 tes
 ```
 
-FFmpeg sengaja **tidak** dibundel secara default: `ffmpeg.exe` build lengkap berukuran
-217 MB, sehingga aplikasi 11 MB akan membengkak jadi ±450 MB dan harus mengekstrak
-ulang isinya ke `%TEMP%` setiap kali dijalankan.
+Hasilnya `dist\VideoMerger.exe`, **satu berkas 195 KB**.
+
+`VideoMerger.Core.dll` ditanam ke dalam exe sebagai *embedded resource* dan dimuat
+lewat `AssemblyResolve`, supaya menyalin exe-nya sendirian ke flashdisk tetap
+bekerja. Dua hal membuat trik ini gagal diam-diam, dan keduanya sudah kena sekali
+di sini:
+
+- Target MSBuild-nya **harus** `AfterTargets="ResolveReferences"`. Hook yang lebih
+  awal tidak pernah dijalankan pada proyek WPF; build tetap sukses dan exe-nya
+  hanya kurang isi — baru ketahuan saat disalin sendirian.
+- `Main` tidak boleh menyentuh satu pun tipe dari Core. CLR memuat assembly saat
+  metode yang memakainya **di-JIT**, bukan saat barisnya dijalankan, jadi
+  pemuatannya terjadi sebelum `AssemblyResolve` sempat terpasang.
+
+FFmpeg sengaja **tidak** dibundel: `ffmpeg.exe` build lengkap berukuran 217 MB,
+sehingga aplikasi 195 KB akan membengkak jadi ratusan MB.
 
 ### Membuat installer
 
@@ -300,35 +311,13 @@ VideoMerger-1.1.0-Setup.exe /VERYSILENT /CURRENTUSER /DIR=C:\uji\vm
 C:\uji\vm\unins000.exe /VERYSILENT
 ```
 
-### Varian folder (start lebih cepat)
-
-Satu file `.exe` harus membongkar isinya ke `%TEMP%` setiap kali dijalankan — terukur
-±1,7 detik sebelum jendela muncul. Kalau aplikasi sering dibuka-tutup, bangun varian
-folder yang start-nya jauh lebih cepat (±0,1 detik):
-
-```bat
-set VMERGE_ONEDIR=1
-.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean vmerge.spec
-```
-
-Hasilnya `dist\VideoMerger\` — bagikan seluruh foldernya, bukan hanya `.exe`-nya.
-
-> Catatan: varian satu-file meninggalkan folder `_MEIxxxxx` di `%TEMP%` bila prosesnya
-> dimatikan paksa lewat Task Manager. Keluar secara normal membersihkannya sendiri.
-
-### Menjalankan tanpa build
-
-```bat
-py -3.11 app.py
-```
-
 ### Menjalankan tes
 
 ```bat
-py -3.11 -m tests.test_compat
+dotnet run --project src\VideoMerger.Tests -c Release
 ```
 
-67 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
+87 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
 **membuktikan** kerusakannya nyata sebelum memeriksa bahwa aplikasi menolaknya.
 
 Tes hardsub-nya juga tidak percaya pada kode keluar: video sumbernya **hitam polos**,
@@ -341,30 +330,32 @@ FFmpeg melaporkan sukses.
 ## Struktur proyek
 
 ```
-app.py                    titik masuk: GUI atau CLI
-vmerge/
-  model.py                struktur data bersama + signature kompatibilitas
-  ffmpeg_locator.py       mencari / mengunduh ffmpeg
-  scanner.py              memindai folder
-  sorting.py              pengurutan (StrCmpLogicalW) + parser tanggal
-  probe.py                pembacaan ffprobe paralel
-  runner.py               menjalankan satu proses ffmpeg: progres, batal,
-                          deteksi gagal walau kode keluarnya 0
-  merger.py               menyusun perintah penggabungan
-  subtitle.py             menemukan & menyiapkan subtitle untuk dibakar
-  hardsub.py              mesin subtitle permanen
-  theme.py                palet warna & gaya ttk (satu-satunya tempat warna)
-  gui.py                  jendela, tab "Gabungkan Video"
-  gui_hardsub.py          tab "Subtitle Permanen"
-  cli.py                  antarmuka baris perintah
-  settings.py             preferensi di %APPDATA%\vmerge
-  util.py                 subprocess Windows, path, DPI
-tests/test_compat.py      tes regresi
-build_exe.bat             pembangun .exe
-build_installer.bat       pembangun installer (exe + Inno Setup)
-installer/setup.iss       skrip Inno Setup
-vmerge.spec               konfigurasi PyInstaller
-.github/workflows/        CI: uji, bangun, terbitkan rilis saat tag "v*"
+VideoMerger.sln
+src/
+  VideoMerger.Core/         mesin - tanpa UI, dipakai bersama GUI, CLI, dan tes
+    Models.cs               kontrak data + signature kompatibilitas 22 field
+    Shell.cs                proses anak Windows: CreateNoWindow, kutip argumen
+    FFmpegLocator.cs        mencari / mengunduh ffmpeg
+    FFmpegTask.cs           menjalankan satu ffmpeg: progres, batal, deteksi gagal
+    Prober.cs               pembacaan ffprobe paralel
+    Scanner.cs              memindai folder
+    Sorting.cs              urutan alami (StrCmpLogicalW) + parser tanggal
+    Merger.cs               menyusun perintah penggabungan
+    Subtitles.cs            menemukan & menyiapkan subtitle
+    Hardsubber.cs           mesin subtitle permanen
+    AppSettings.cs          preferensi di %APPDATA%merge\settings.ini
+  VideoMerger.App/          WPF
+    Program.cs              titik masuk: GUI atau CLI
+    Theme.xaml              palet & gaya (satu-satunya tempat warna)
+    MainWindow.xaml(.cs)    jendela, kedua tab
+    Rows.cs                 pembungkus baris tabel (INotifyPropertyChanged)
+    Cli.cs                  antarmuka baris perintah
+    EmbeddedAssemblies.cs   memuat Core.dll dari dalam exe
+  VideoMerger.Tests/        87 tes, semuanya menjalankan FFmpeg sungguhan
+build.bat                   bangun exe
+build_installer.bat         bangun exe + installer
+installer/setup.iss         skrip Inno Setup
+.github/workflows/          CI: uji, bangun, terbitkan rilis saat tag "v*"
 ```
 
 Preferensi pengguna disimpan di `%APPDATA%\vmerge\settings.json`.
@@ -398,4 +389,3 @@ Video Merger tidak menyertakan atau menautkan kode FFmpeg — ia memanggil `ffmp
 dan `ffprobe.exe` sebagai program terpisah. Kalau Anda menyebarkan installer dengan
 FFmpeg ikut dibundel, kewajiban lisensi FFmpeg (LGPL/GPL) berlaku untuk distribusi
 tersebut. Lihat [ffmpeg.org/legal.html](https://ffmpeg.org/legal.html).
->>>>>>> 5ce954b (Video Merger 1.0.0 - penggabung video massal berbasis FFmpeg)

@@ -24,4 +24,18 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
 
+  <!--
+    Assembly BCL, bukan paket NuGet: keduanya sudah ada di setiap pemasangan
+    .NET Framework, jadi tidak ada DLL yang ikut didistribusikan.
+    System.IO.Compression.FileSystem yang menyediakan ExtractToFile.
+  -->
+  <ItemGroup>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Net.Http" />
+    <!-- JavaScriptSerializer: pengurai JSON bawaan .NET Framework, dipakai
+         untuk keluaran ffprobe supaya tidak perlu paket NuGet apa pun. -->
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+
 </Project>

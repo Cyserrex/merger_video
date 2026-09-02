@@ -17,9 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-dotnet@v4
         with:
-          python-version: "3.11"
+          dotnet-version: "8.0.x"
 
       # Rangkaian tes ini sengaja menjalankan FFmpeg betulan - beberapa tes
       # lebih dulu membuktikan bahwa kerusakannya nyata, baru memeriksa
@@ -28,7 +28,7 @@ jobs:
         run: choco install ffmpeg --no-progress -y
 
       - name: Jalankan tes
-        run: python -m tests.test_compat
+        run: dotnet run --project src/VideoMerger.Tests -c Release --nologo
 
   build:
     name: Bangun exe + installer
@@ -37,9 +37,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-dotnet@v4
         with:
-          python-version: "3.11"
+          dotnet-version: "8.0.x"
 
       - name: Pasang Inno Setup
         run: choco install innosetup --no-progress -y
@@ -61,7 +61,7 @@ jobs:
           name: VideoMerger-installer
           path: installer/Output/*.exe
 
-      # Dorong tag "v1.0.0" untuk menerbitkan rilis berisi kedua berkas.
+      # Dorong tag "v1.1.0" untuk menerbitkan rilis berisi kedua berkas.
       - name: Terbitkan rilis
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2

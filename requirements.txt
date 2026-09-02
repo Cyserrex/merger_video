@@ -1,3 +1,0 @@
-# Aplikasi ini hanya memakai pustaka standar Python.
-# PyInstaller dibutuhkan untuk membangun .exe saja.
-pyinstaller>=6.0

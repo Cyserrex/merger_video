@@ -1,12 +1,17 @@
+# --- hasil build .NET ---
+bin/
+obj/
 dist/
-build/
-.venv/
-__pycache__/
-*.pyc
+installer/Output/
+*.user
+*.suo
+.vs/
+
+# --- keluaran uji coba ---
 testdata/
 out_*.mp4
 e_*.mp4
 v_*.mp4
-installer/Output/
+
+# Biner tidak masuk repo; CI yang membangun dan menerbitkannya.
 *.exe
-!.gitignore

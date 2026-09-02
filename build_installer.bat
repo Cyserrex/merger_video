@@ -5,15 +5,17 @@ REM
 REM  Cara pakai:
 REM      build_installer.bat                -> installer biasa (FFmpeg dicari
 REM                                            atau diunduh saat pertama pakai)
-REM      build_installer.bat --with-ffmpeg  -> exe portabel, FFmpeg dibundel
-REM                                            ke dalam exe-nya
+REM      build_installer.bat --with-ffmpeg  -> tidak dipakai lagi; untuk
+REM                                            installer offline penuh, taruh
+REM                                            ffmpeg di folder ffmpeg\ (lihat
+REM                                            di bawah)
 REM
 REM  Untuk installer offline penuh tanpa membengkakkan exe, taruh ffmpeg.exe
 REM  dan ffprobe.exe di folder ffmpeg\ di sebelah berkas ini; setup.iss akan
 REM  mendeteksi dan ikut memasangnya.
 REM
 REM  Syarat:
-REM      - Python 3.9+ di PATH
+REM      - .NET SDK 8 dan .NET Framework 4.8 Developer Pack
 REM      - Inno Setup 6  (winget install JRSoftware.InnoSetup)
 REM
 REM  Set VMERGE_NOPAUSE=1 untuk jalan tanpa "tekan sembarang tombol" (CI).
@@ -34,7 +36,7 @@ set "VMERGE_NOPAUSE=1"
 REM Jalur lengkap, bukan nama polos: kalau NoDefaultCurrentDirectoryInExePath
 REM aktif (lazim di PC yang dikeraskan oleh kebijakan grup), cmd tidak lagi
 REM mencari batch di folder kerja dan panggilan ini gagal "is not recognized".
-call "%~dp0build_exe.bat" %*
+call "%~dp0build.bat" %*
 set "BUILD_RC=%ERRORLEVEL%"
 set "VMERGE_NOPAUSE=%OUTER_NOPAUSE%"
 if not "%BUILD_RC%"=="0" (

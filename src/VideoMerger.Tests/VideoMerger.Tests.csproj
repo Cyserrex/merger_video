@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Runner konsol biasa, bukan kerangka uji: setiap tes di sini menjalankan
+    FFmpeg sungguhan dan diperiksa dengan mengukur berkas hasilnya, jadi tidak
+    ada yang perlu di-mock. Menjalankannya cukup dengan satu exe, termasuk di
+    komputer yang tidak punya SDK.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>VideoMerger.Tests</AssemblyName>
+    <RootNamespace>VideoMerger.Tests</RootNamespace>
+    <Version>1.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\VideoMerger.Core\VideoMerger.Core.csproj" />
+  </ItemGroup>
+
+</Project>

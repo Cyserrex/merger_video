@@ -44,10 +44,9 @@ UninstallDisplayName={#MyAppName} {#MyAppVersion}
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 
-; Build PyInstaller-nya 64-bit, jadi tolak Windows 32-bit sejak awal daripada
-; gagal misterius saat exe dijalankan.
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+; Aplikasi .NET Framework berjalan di Windows 32 maupun 64 bit, jadi tidak ada
+; alasan menolak mesin 32-bit. Batas versinya Windows 7 SP1, sejalan dengan
+; .NET Framework 4.8 itu sendiri.
 MinVersion=6.1sp1
 
 OutputDir=Output
@@ -164,9 +163,40 @@ SetupAborted=Pemasangan tidak selesai.%n%nPerbaiki masalahnya lalu jalankan pema
 
 [CustomMessages]
 id.FFmpegNote=Catatan: aplikasi ini memakai FFmpeg. Kalau FFmpeg belum ada di komputer, aplikasi akan menawarkan mengunduhnya sekali (sekitar 170 MB) saat pertama dipakai.
+id.NeedDotNet=Aplikasi ini memerlukan Microsoft .NET Framework 4.8, yang belum terpasang di komputer ini.%n%nWindows 10 versi 1903 ke atas dan Windows 11 sudah membawanya. Pada Windows 7 SP1 atau 8.1, .NET Framework 4.8 perlu dipasang sekali (gratis, dari Microsoft).%n%nBuka halaman unduhannya sekarang?
 id.RemoveDataPrompt=Hapus juga pengaturan dan FFmpeg yang pernah diunduh aplikasi ini (%1)?%n%nPilih Tidak kalau Anda berencana memasangnya lagi.
 
 [Code]
+/// Rilis .NET Framework 4.8 bernomor 528040 ke atas.
+function DotNet48Installed(): Boolean;
+var
+  release: Cardinal;
+begin
+  Result := RegQueryDWordValue(
+    HKLM, 'SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full',
+    'Release', release) and (release >= 528040);
+end;
+
+function InitializeSetup(): Boolean;
+var
+  dummy: Integer;
+begin
+  Result := True;
+  { Windows 10 1903 ke atas dan Windows 11 sudah membawa 4.8, jadi kotak ini
+    praktis hanya muncul di Windows 7 SP1 / 8.1 - dan justru di situ ia paling
+    dibutuhkan: tanpa pemeriksaan ini pemasangan tetap "berhasil" lalu
+    aplikasinya gagal dibuka tanpa penjelasan apa pun. }
+  if not DotNet48Installed() then
+  begin
+    if MsgBox(ExpandConstant('{cm:NeedDotNet}'), mbConfirmation,
+              MB_YESNO) = IDYES then
+      ShellExec('open',
+                'https://dotnet.microsoft.com/download/dotnet-framework/net48',
+                '', '', SW_SHOW, ewNoWait, dummy);
+    Result := False;
+  end;
+end;
+
 function AppDataDir(): String;
 begin
   Result := ExpandConstant('{userappdata}\vmerge');

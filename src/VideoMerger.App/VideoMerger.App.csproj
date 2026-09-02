@@ -1,0 +1,77 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>VideoMerger</AssemblyName>
+    <RootNamespace>VideoMerger.App</RootNamespace>
+    <Version>1.1.0</Version>
+    <ApplicationIcon>..\..\assets\vmerge.ico</ApplicationIcon>
+    <AssemblyTitle>Video Merger</AssemblyTitle>
+    <Product>Video Merger</Product>
+    <Description>Penggabung video dan pembakar subtitle permanen</Description>
+    <Company>Video Merger</Company>
+    <StartupObject>VideoMerger.App.Program</StartupObject>
+  </PropertyGroup>
+
+  <!--
+    App.xaml diturunkan dari ApplicationDefinition jadi Page supaya WPF tidak
+    membangkitkan Main sendiri. Main harus milik kita: mode baris perintah
+    perlu menyambung ke konsol pemanggil SEBELUM Application dibuat, dan
+    entry point bawaan WPF tidak memberi tempat untuk itu.
+  -->
+  <ItemGroup>
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\VideoMerger.Core\VideoMerger.Core.csproj" />
+  </ItemGroup>
+
+  <!-- FolderBrowserDialog dan ColorDialog: WPF tidak punya padanannya, dan
+       keduanya ada di BCL jadi tidak menambah berkas yang perlu dikirim. -->
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="..\..\assets\vmerge.ico" Link="assets\vmerge.ico" />
+  </ItemGroup>
+
+  <!--
+    Tanam VideoMerger.Core.dll ke dalam exe supaya distribusinya tetap SATU
+    berkas. Menyalin exe-nya sendirian ke flashdisk harus tetap bekerja;
+    dengan dua berkas terpisah, exe yang tersalin sendirian gagal dengan
+    pesan yang tidak menjelaskan apa pun. Target ini berjalan setelah
+    referensi proyek diselesaikan, jadi DLL-nya sudah ada saat ditanam.
+  -->
+  <Target Name="EmbedCore" AfterTargets="ResolveReferences">
+    <PropertyGroup>
+      <CoreDll>$(MSBuildThisFileDirectory)..\VideoMerger.Core\bin\$(Configuration)\net48\VideoMerger.Core.dll</CoreDll>
+    </PropertyGroup>
+    <!--
+      AfterTargets="ResolveReferences" bukan pilihan sembarangan. Hook yang
+      lebih awal (PrepareForBuild, PrepareResourceNames) tidak pernah
+      dijalankan sama sekali pada proyek WPF, dan kegagalannya SENYAP: build
+      tetap sukses, exe tetap terbentuk, hanya isinya tidak bertambah - baru
+      ketahuan ketika exe-nya disalin sendirian dan gagal jalan. Error di
+      bawah yang membuat kegagalan berikutnya berisik.
+
+      ProjectReference menjamin Core sudah dibangun saat target ini jalan,
+      jadi jalurnya aman disebut langsung.
+    -->
+    <Error Condition="!Exists('$(CoreDll)')"
+           Text="VideoMerger.Core.dll tidak ditemukan di $(CoreDll)" />
+    <ItemGroup>
+      <EmbeddedResource Include="$(CoreDll)">
+        <LogicalName>VideoMerger.App.VideoMerger.Core.dll</LogicalName>
+        <Visible>false</Visible>
+      </EmbeddedResource>
+    </ItemGroup>
+  </Target>
+
+</Project>
