@@ -1,0 +1,12 @@
+dist/
+build/
+.venv/
+__pycache__/
+*.pyc
+testdata/
+out_*.mp4
+e_*.mp4
+v_*.mp4
+installer/Output/
+*.exe
+!.gitignore

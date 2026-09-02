@@ -1,0 +1,72 @@
+name: Build
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # dibutuhkan oleh langkah Release di bawah
+
+jobs:
+  test:
+    name: Uji kompatibilitas (FFmpeg sungguhan)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Rangkaian tes ini sengaja menjalankan FFmpeg betulan - beberapa tes
+      # lebih dulu membuktikan bahwa kerusakannya nyata, baru memeriksa
+      # aplikasi menolaknya. Tanpa FFmpeg tes itu tidak ada artinya.
+      - name: Pasang FFmpeg
+        run: choco install ffmpeg --no-progress -y
+
+      - name: Jalankan tes
+        run: python -m tests.test_compat
+
+  build:
+    name: Bangun exe + installer
+    runs-on: windows-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Pasang Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Bangun
+        env:
+          VMERGE_NOPAUSE: "1"   # tanpa ini skrip berhenti menunggu tombol
+        run: .\build_installer.bat
+
+      - name: Unggah exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: VideoMerger-exe
+          path: dist/VideoMerger.exe
+
+      - name: Unggah installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: VideoMerger-installer
+          path: installer/Output/*.exe
+
+      # Dorong tag "v1.0.0" untuk menerbitkan rilis berisi kedua berkas.
+      - name: Terbitkan rilis
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/VideoMerger.exe
+            installer/Output/*.exe
+          generate_release_notes: true

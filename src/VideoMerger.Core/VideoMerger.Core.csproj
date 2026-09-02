@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    net48 dipilih supaya exe-nya tetap kecil dan pengguna tidak perlu
+    mengunduh runtime apa pun: Windows 10 1903 ke atas sudah membawa
+    .NET Framework 4.8, dan Windows 7 SP1 / 8.1 cukup memasangnya sekali.
+    .NET 8 self-contained akan berukuran ~150 MB karena WPF tidak mendukung
+    trimming maupun NativeAOT.
+
+    Sengaja tanpa satu pun PackageReference. Keluaran ffprobe dibaca dengan
+    "-of flat" (baris key=value) alih-alih JSON, dan pengaturan disimpan
+    sebagai key=value biasa, sehingga tidak ada DLL yang harus ikut
+    didistribusikan bersama exe-nya.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>VideoMerger.Core</AssemblyName>
+    <RootNamespace>VideoMerger.Core</RootNamespace>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Version>1.1.0</Version>
+    <NeutralLanguage>id-ID</NeutralLanguage>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+
+</Project>
