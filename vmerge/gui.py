@@ -24,23 +24,27 @@ from .probe import can_stream_copy, probe_many
 from .scanner import scan_folder
 from .settings import Settings
 from .sorting import move_items, sort_files
+from .theme import Theme
 from .util import (app_dir, resource_path, reveal_in_explorer,
                    run_capture)
 
 CHECKED = "☑"      # ballot box with check
 UNCHECKED = "☐"    # ballot box
 
+# (kunci, judul, lebar awal, perataan). Lebar di sini menentukan lebar
+# minimum jendela: Treeview tidak mau menyusut di bawah jumlah kolomnya, dan
+# nilai yang terlalu besar membuat isi aplikasi terpotong saat pertama dibuka.
 COLUMNS = (
-    ("check", "", 34, "center"),
-    ("no", "#", 42, "center"),
-    ("name", "Nama File", 300, "w"),
-    ("duration", "Durasi", 82, "center"),
-    ("resolution", "Resolusi", 92, "center"),
-    ("codec", "Video", 66, "center"),
-    ("audio", "Audio", 96, "center"),
-    ("size", "Ukuran", 82, "e"),
-    ("date", "Tanggal", 132, "center"),
-    ("status", "Keterangan", 220, "w"),
+    ("check", "", 32, "center"),
+    ("no", "#", 38, "center"),
+    ("name", "Nama File", 190, "w"),
+    ("duration", "Durasi", 70, "center"),
+    ("resolution", "Resolusi", 80, "center"),
+    ("codec", "Video", 58, "center"),
+    ("audio", "Audio", 78, "center"),
+    ("size", "Ukuran", 72, "e"),
+    ("date", "Tanggal", 112, "center"),
+    ("status", "Keterangan", 130, "w"),
 )
 
 HW_ENCODERS = (
@@ -60,7 +64,7 @@ class App(tk.Tk):
         self.tools: Optional[FFmpegTools] = None
         self.queue: "queue.Queue[tuple]" = queue.Queue()
         self.worker: Optional[threading.Thread] = None
-        self.merger: Optional[Merger] = None
+        self.task: Optional[Merger] = None   # merge atau hardsub
         self.busy = False
         self._cancel_scan = threading.Event()
         self._drag_from: Optional[int] = None
@@ -74,16 +78,10 @@ class App(tk.Tk):
         self._log_pending: list[str] = []
 
         self.title(f"{APP_NAME} {APP_VERSION}")
-        self.minsize(940, 620)
-        try:
-            self.geometry(self.settings["window_geometry"] or "1120x740")
-        except tk.TclError:
-            # A hand-edited or stale geometry string must not stop the window
-            # from ever appearing.
-            self.geometry("1120x740")
         self._set_icon()
         self._init_style()
         self._build_ui()
+        self._size_window()
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(80, self._pump_queue)
@@ -101,94 +99,179 @@ class App(tk.Tk):
                 continue
 
     def _init_style(self) -> None:
-        style = ttk.Style(self)
-        if "vista" in style.theme_names():
-            style.theme_use("vista")
-        elif "clam" in style.theme_names():
-            style.theme_use("clam")
-        style.configure("Treeview", rowheight=24)
-        style.configure("Heading.TLabel", font=("Segoe UI", 10, "bold"))
-        style.configure("Hint.TLabel", foreground="#666666")
-        style.configure("Bad.TLabel", foreground="#B00020")
-        style.configure("Good.TLabel", foreground="#1B5E20")
-        style.configure("Big.TButton", font=("Segoe UI", 10, "bold"), padding=6)
+        self.theme = Theme(self)
+
+    def _size_window(self) -> None:
+        """Pick a starting size that fits both the content and the screen.
+
+        The minimum is measured from the built layout rather than hardcoded:
+        a hardcoded 940x620 was smaller than what the widgets actually needed,
+        so the bottom of the window - the Merge button included - was simply
+        cut off until the user resized it.
+
+        The starting size is then clamped to the work area, because the same
+        content that fits comfortably on 1920x1080 is taller than a 1366x768
+        laptop screen once the taskbar is taken out.
+        """
+        self.update_idletasks()
+        need_w = max(900, self.winfo_reqwidth())
+        need_h = max(600, self.winfo_reqheight())
+
+        # Leave room for the taskbar and window chrome.
+        avail_w = max(640, self.winfo_screenwidth() - 60)
+        avail_h = max(480, self.winfo_screenheight() - 90)
+        self.minsize(min(need_w, avail_w), min(need_h, avail_h))
+
+        saved = str(self.settings["window_geometry"] or "")
+        if saved:
+            try:
+                self.geometry(saved)
+                self.update_idletasks()
+                # A geometry saved on a bigger monitor must not strand the
+                # window off-screen on this one.
+                if (self.winfo_width() <= avail_w
+                        and self.winfo_height() <= avail_h
+                        and self.winfo_x() < avail_w
+                        and self.winfo_y() < avail_h):
+                    return
+            except tk.TclError:
+                pass                      # stale or hand-edited: fall through
+
+        self.geometry(f"{min(1120, avail_w)}x{min(760, avail_h)}")
 
     # ------------------------------------------------------------ layout --
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=3)
-        self.rowconfigure(3, weight=1)
+        self.rowconfigure(1, weight=1)
 
-        self._build_source_bar()
-        self._build_list()
-        self._build_options()
+        self._build_header()
+
+        self.tabs = ttk.Notebook(self)
+        self.tabs.grid(row=1, column=0, sticky="nsew", padx=14, pady=(2, 0))
+
+        page_merge = ttk.Frame(self.tabs, style="Card.TFrame")
+        self.tabs.add(page_merge, text="   Gabungkan Video   ")
+        self._build_merge_tab(page_merge)
+
+        page_sub = ttk.Frame(self.tabs, style="Card.TFrame")
+        self.tabs.add(page_sub, text="   Subtitle Permanen   ")
+        from .gui_hardsub import HardsubPanel
+        self.hardsub = HardsubPanel(page_sub, self)
+
         self._build_bottom()
 
-    def _build_source_bar(self) -> None:
-        frame = ttk.LabelFrame(self, text=" 1. Folder berisi video ")
-        frame.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 6))
+        # Ctrl+Tab / Alt+underlined-letter between tabs, which is what
+        # keyboard users and screen readers expect from a tab strip.
+        self.tabs.enable_traversal()
+        self.tabs.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        try:
+            self.tabs.select(int(self.settings["active_tab"]))
+        except (tk.TclError, ValueError, IndexError):
+            pass
+
+    def _build_header(self) -> None:
+        bar = ttk.Frame(self, style="Header.TFrame")
+        bar.grid(row=0, column=0, sticky="ew", padx=14, pady=(12, 6))
+        bar.columnconfigure(1, weight=1)
+
+        ttk.Label(bar, text=APP_NAME, style="Head.TLabel").grid(
+            row=0, column=0, sticky="w")
+        ttk.Label(bar, text=f"  v{APP_VERSION}", style="Hint.TLabel").grid(
+            row=0, column=1, sticky="w", pady=(6, 0))
+        self.lbl_ffmpeg = ttk.Label(bar, text="Mencari FFmpeg...",
+                                    style="Hint.TLabel")
+        self.lbl_ffmpeg.grid(row=0, column=2, sticky="e", pady=(6, 0))
+
+    # -- tab 1: merge ------------------------------------------------------
+    def _build_merge_tab(self, page: ttk.Frame) -> None:
+        page.columnconfigure(0, weight=1)
+        page.rowconfigure(3, weight=1)
+
+        self._build_source_row(page, row=0)
+        ttk.Separator(page).grid(row=1, column=0, sticky="ew", padx=16,
+                                 pady=(4, 0))
+        self._build_list_toolbar(page, row=2)
+        self._build_list(page, row=3)
+        self._build_output_row(page, row=4)
+
+    def _build_source_row(self, page: ttk.Frame, row: int) -> None:
+        frame = ttk.Frame(page, style="CardBody.TFrame")
+        frame.grid(row=row, column=0, sticky="ew", padx=16, pady=(14, 8))
         frame.columnconfigure(1, weight=1)
 
-        ttk.Label(frame, text="Folder:").grid(row=0, column=0, padx=(8, 4),
-                                              pady=8, sticky="w")
+        ttk.Label(frame, text="Folder video", style="Card.TLabel").grid(
+            row=0, column=0, padx=(0, 10), sticky="w")
         self.var_folder = tk.StringVar(value=self.settings["last_input_dir"])
         entry = ttk.Entry(frame, textvariable=self.var_folder)
-        entry.grid(row=0, column=1, sticky="ew", pady=8)
+        entry.grid(row=0, column=1, sticky="ew")
         entry.bind("<Return>", lambda _e: self.rescan())
 
-        ttk.Button(frame, text="Pilih Folder...", command=self.choose_folder
-                   ).grid(row=0, column=2, padx=6, pady=8)
+        ttk.Button(frame, text="Pilih Folder", command=self.choose_folder
+                   ).grid(row=0, column=2, padx=(8, 0))
         ttk.Button(frame, text="Muat Ulang", command=self.rescan
-                   ).grid(row=0, column=3, padx=(0, 8), pady=8)
+                   ).grid(row=0, column=3, padx=(6, 0))
 
-        self.var_recursive = tk.BooleanVar(value=bool(self.settings["recursive"]))
+        self.var_recursive = tk.BooleanVar(
+            value=bool(self.settings["recursive"]))
         ttk.Checkbutton(frame, text="Termasuk subfolder",
                         variable=self.var_recursive, command=self.rescan
-                        ).grid(row=1, column=1, sticky="w", pady=(0, 8))
+                        ).grid(row=1, column=1, sticky="w", pady=(8, 0))
 
-    def _build_list(self) -> None:
-        frame = ttk.LabelFrame(self, text=" 2. Urutan penggabungan ")
-        frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=6)
-        frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(1, weight=1)
+    def _build_list_toolbar(self, page: ttk.Frame, row: int) -> None:
+        bar = ttk.Frame(page, style="Toolbar.TFrame")
+        bar.grid(row=row, column=0, sticky="ew", padx=16, pady=(10, 6))
 
-        bar = ttk.Frame(frame)
-        bar.grid(row=0, column=0, columnspan=2, sticky="ew", padx=8, pady=(8, 4))
-
-        ttk.Label(bar, text="Urutkan:").pack(side="left")
+        ttk.Label(bar, text="Urutkan", style="Card.TLabel").pack(side="left")
         self.var_sort = tk.StringVar(value=self.settings.sort_key.label)
-        combo = ttk.Combobox(bar, textvariable=self.var_sort, state="readonly",
-                             width=26,
-                             values=[k.label for k in SortKey if k is not SortKey.MANUAL])
-        combo.pack(side="left", padx=(4, 6))
+        combo = ttk.Combobox(
+            bar, textvariable=self.var_sort, state="readonly", width=24,
+            values=[k.label for k in SortKey if k is not SortKey.MANUAL])
+        combo.pack(side="left", padx=(8, 8))
         combo.bind("<<ComboboxSelected>>", lambda _e: self.apply_sort())
 
         self.var_desc = tk.BooleanVar(value=bool(self.settings["sort_desc"]))
         ttk.Checkbutton(bar, text="Menurun", variable=self.var_desc,
-                        command=self.apply_sort).pack(side="left", padx=(0, 12))
+                        command=self.apply_sort).pack(side="left", padx=(0, 14))
 
-        for text, cmd in (("▲ Naik", lambda: self.move(-1)),
-                          ("▼ Turun", lambda: self.move(1)),
+        for text, cmd in (("Naik", lambda: self.move(-1)),
+                          ("Turun", lambda: self.move(1)),
                           ("Hapus", self.remove_selected),
                           ("Centang Semua", lambda: self.set_all(True)),
-                          ("Hapus Centang", lambda: self.set_all(False))):
-            ttk.Button(bar, text=text, command=cmd).pack(side="left", padx=2)
+                          ("Lepas Semua", lambda: self.set_all(False))):
+            ttk.Button(bar, text=text, command=cmd, style="Tool.TButton"
+                       ).pack(side="left", padx=2)
 
         self.lbl_summary = ttk.Label(bar, text="", style="Hint.TLabel")
         self.lbl_summary.pack(side="right")
 
+    def _build_list(self, page: ttk.Frame, row: int) -> None:
+        frame = ttk.Frame(page, style="CardBody.TFrame")
+        frame.grid(row=row, column=0, sticky="nsew", padx=16)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(0, weight=1)
+
         self.tree = ttk.Treeview(frame, columns=[c[0] for c in COLUMNS],
-                                 show="headings", selectmode="extended")
+                                 show="headings", selectmode="extended",
+                                 # Ini tinggi MINIMUM, bukan tinggi tampil:
+                                 # barisnya melar mengikuti jendela. 10 baris
+                                 # bawaan Tk menuntut 280px dan membuat
+                                 # jendela tidak muat di layar 1366x768.
+                                 height=4)
         for key, title, width, anchor in COLUMNS:
             self.tree.heading(key, text=title)
             self.tree.column(key, width=width, anchor=anchor,
                              stretch=(key in ("name", "status")))
-        self.tree.grid(row=1, column=0, sticky="nsew", padx=(8, 0), pady=(0, 8))
-        self.tree.tag_configure("bad", foreground="#B00020")
-        self.tree.tag_configure("off", foreground="#9E9E9E")
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        c = self.theme.c
+        self.tree.tag_configure("bad", foreground=c["danger"])
+        self.tree.tag_configure("off", foreground=c["muted"])
+        # Zebra striping: at 100+ rows a flat white table makes it genuinely
+        # hard to follow one row across to its status column.
+        self.tree.tag_configure("odd", background=c["row_alt"])
 
-        scroll = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
-        scroll.grid(row=1, column=1, sticky="ns", padx=(0, 8), pady=(0, 8))
+        scroll = ttk.Scrollbar(frame, orient="vertical",
+                               command=self.tree.yview)
+        scroll.grid(row=0, column=1, sticky="ns")
         self.tree.configure(yscrollcommand=scroll.set)
 
         self.tree.bind("<Button-1>", self._on_tree_press)
@@ -198,88 +281,120 @@ class App(tk.Tk):
         self.tree.bind("<space>", lambda _e: self._toggle_selected())
         self.tree.bind("<Delete>", lambda _e: self.remove_selected())
 
-    def _build_options(self) -> None:
-        frame = ttk.LabelFrame(self, text=" 3. Hasil ")
-        frame.grid(row=2, column=0, sticky="ew", padx=10, pady=6)
+    def _build_output_row(self, page: ttk.Frame, row: int) -> None:
+        frame = ttk.Frame(page, style="CardBody.TFrame")
+        frame.grid(row=row, column=0, sticky="ew", padx=16, pady=(12, 14))
         frame.columnconfigure(1, weight=1)
 
-        ttk.Label(frame, text="Simpan sebagai:").grid(row=0, column=0,
-                                                      padx=(8, 4), pady=(8, 4),
-                                                      sticky="w")
+        ttk.Label(frame, text="Simpan sebagai", style="Card.TLabel").grid(
+            row=0, column=0, padx=(0, 10), sticky="w")
         self.var_output = tk.StringVar()
         ttk.Entry(frame, textvariable=self.var_output).grid(
-            row=0, column=1, columnspan=3, sticky="ew", pady=(8, 4))
-        ttk.Button(frame, text="Simpan Ke...", command=self.choose_output
-                   ).grid(row=0, column=4, padx=6, pady=(8, 4))
+            row=0, column=1, columnspan=3, sticky="ew")
+        ttk.Button(frame, text="Simpan Ke", command=self.choose_output).grid(
+            row=0, column=4, padx=(8, 0))
 
-        ttk.Label(frame, text="Metode:").grid(row=1, column=0, padx=(8, 4),
-                                              pady=(0, 8), sticky="w")
+        opts = ttk.Frame(frame, style="CardBody.TFrame")
+        opts.grid(row=1, column=0, columnspan=5, sticky="ew", pady=(10, 0))
+
+        ttk.Label(opts, text="Metode", style="Card.TLabel").pack(side="left")
         self.var_mode = tk.StringVar(value=self.settings.merge_mode.label)
-        mode_box = ttk.Combobox(frame, textvariable=self.var_mode,
-                                state="readonly", width=28,
+        mode_box = ttk.Combobox(opts, textvariable=self.var_mode,
+                                state="readonly", width=26,
                                 values=[m.label for m in MergeMode])
-        mode_box.grid(row=1, column=1, sticky="w", pady=(0, 8))
+        mode_box.pack(side="left", padx=(8, 18))
         mode_box.bind("<<ComboboxSelected>>", lambda _e: self._update_summary())
 
-        adv = ttk.Frame(frame)
-        adv.grid(row=1, column=2, columnspan=3, sticky="e", padx=8, pady=(0, 8))
-
-        ttk.Label(adv, text="Kualitas (CRF):").pack(side="left")
+        ttk.Label(opts, text="Kualitas (CRF)", style="Card.TLabel").pack(
+            side="left")
         self.var_crf = tk.StringVar(value=str(self.settings["crf"]))
-        ttk.Spinbox(adv, from_=14, to=32, width=4, textvariable=self.var_crf
-                    ).pack(side="left", padx=(4, 12))
+        ttk.Spinbox(opts, from_=14, to=32, width=4, textvariable=self.var_crf
+                    ).pack(side="left", padx=(8, 18))
 
-        ttk.Label(adv, text="Encoder:").pack(side="left")
+        ttk.Label(opts, text="Encoder", style="Card.TLabel").pack(side="left")
         self.var_encoder = tk.StringVar(value=HW_ENCODERS[0][1])
-        self.box_encoder = ttk.Combobox(adv, textvariable=self.var_encoder,
-                                        state="readonly", width=24,
-                                        values=[label for _v, label in HW_ENCODERS])
-        self.box_encoder.pack(side="left", padx=4)
+        self.box_encoder = ttk.Combobox(
+            opts, textvariable=self.var_encoder, state="readonly", width=24,
+            values=[label for _v, label in HW_ENCODERS])
+        self.box_encoder.pack(side="left", padx=(8, 0))
 
+    # -- shared action bar -------------------------------------------------
     def _build_bottom(self) -> None:
-        frame = ttk.Frame(self)
-        frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=(6, 10))
+        frame = ttk.Frame(self, style="Card.TFrame")
+        frame.grid(row=2, column=0, sticky="ew", padx=14, pady=(10, 12))
         frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(3, weight=1)
 
-        self.progress = ttk.Progressbar(frame, mode="determinate", maximum=1000)
+        body = ttk.Frame(frame, style="CardBody.TFrame")
+        body.grid(row=0, column=0, sticky="ew", padx=16, pady=12)
+        body.columnconfigure(0, weight=1)
+        body.rowconfigure(3, weight=1)
+
+        self.progress = ttk.Progressbar(body, mode="determinate",
+                                        maximum=1000)
         self.progress.grid(row=0, column=0, columnspan=2, sticky="ew")
 
-        status = ttk.Frame(frame)
-        status.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(4, 6))
+        status = ttk.Frame(body, style="CardBody.TFrame")
+        status.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 10))
         status.columnconfigure(0, weight=1)
-        self.lbl_status = ttk.Label(status, text="Siap.")
+        self.lbl_status = ttk.Label(status, text="Siap.", style="Status.TLabel")
         self.lbl_status.grid(row=0, column=0, sticky="w")
         self.lbl_eta = ttk.Label(status, text="", style="Hint.TLabel")
         self.lbl_eta.grid(row=0, column=1, sticky="e")
 
-        buttons = ttk.Frame(frame)
-        buttons.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 6))
-        self.btn_merge = ttk.Button(buttons, text="GABUNGKAN VIDEO",
-                                    style="Big.TButton", command=self.start_merge)
-        self.btn_merge.pack(side="left")
+        buttons = ttk.Frame(body, style="CardBody.TFrame")
+        buttons.grid(row=2, column=0, columnspan=2, sticky="ew")
+        self.btn_primary = ttk.Button(buttons, text="GABUNGKAN VIDEO",
+                                      style="Accent.TButton",
+                                      command=self._start_active_tab)
+        self.btn_primary.pack(side="left")
         self.btn_cancel = ttk.Button(buttons, text="Batalkan",
+                                     style="Danger.TButton",
                                      command=self.cancel, state="disabled")
-        self.btn_cancel.pack(side="left", padx=6)
+        self.btn_cancel.pack(side="left", padx=8)
         self.btn_open = ttk.Button(buttons, text="Buka Folder Hasil",
                                    command=self.open_result, state="disabled")
-        self.btn_open.pack(side="left", padx=6)
+        self.btn_open.pack(side="left")
 
         self.var_show_log = tk.BooleanVar(value=False)
-        ttk.Checkbutton(buttons, text="Tampilkan log teknis",
+        ttk.Checkbutton(buttons, text="Log teknis",
                         variable=self.var_show_log, command=self._toggle_log
                         ).pack(side="right")
-        self.lbl_ffmpeg = ttk.Label(buttons, text="", style="Hint.TLabel")
-        self.lbl_ffmpeg.pack(side="right", padx=12)
 
-        self.log_frame = ttk.Frame(frame)
-        self.log_frame.grid(row=3, column=0, columnspan=2, sticky="nsew")
+        self.log_frame = ttk.Frame(body, style="CardBody.TFrame")
+        self.log_frame.grid(row=3, column=0, columnspan=2, sticky="nsew",
+                            pady=(10, 0))
         self.log_frame.columnconfigure(0, weight=1)
         self.log_frame.rowconfigure(0, weight=1)
         self.log = ScrolledText(self.log_frame, height=8, wrap="none",
-                                font=("Consolas", 9), state="disabled")
+                                font=self.theme.font_mono, state="disabled",
+                                relief="flat", borderwidth=0,
+                                background="#F7F9FC",
+                                foreground=self.theme.c["text"])
         self.log.grid(row=0, column=0, sticky="nsew")
         self.log_frame.grid_remove()
+
+    # -- tab plumbing ------------------------------------------------------
+    def _on_tab_changed(self, _event=None) -> None:
+        """Keep the one action button describing what it will actually do."""
+        index = self._active_tab()
+        self.btn_primary.configure(
+            text="GABUNGKAN VIDEO" if index == 0 else "BAKAR SUBTITLE")
+        self.settings["active_tab"] = index
+
+    def _active_tab(self) -> int:
+        try:
+            return self.tabs.index(self.tabs.select())
+        except (tk.TclError, ValueError):
+            return 0
+
+    def _start_active_tab(self) -> None:
+        # One button, one busy flag, one worker: the two tabs deliberately
+        # share them so a merge and a burn can never run at once and fight
+        # over the same output folder.
+        if self._active_tab() == 0:
+            self.start_merge()
+        else:
+            self.hardsub.start()
 
     def _toggle_log(self) -> None:
         if self.var_show_log.get():
@@ -292,7 +407,8 @@ class App(tk.Tk):
         self.tools = locate(self.settings["ffmpeg_dir"])
         if self.tools:
             self.lbl_ffmpeg.configure(
-                text=f"FFmpeg {self.tools.version} ({self.tools.source})")
+                text=f"FFmpeg {_short_version(self.tools.version)} "
+                     f"({self.tools.source})", style="Hint.TLabel")
             self._detect_encoders()
             if self.var_folder.get():
                 self.rescan()
@@ -607,7 +723,7 @@ class App(tk.Tk):
             hwaccel_encoder=encoder,
             faststart=bool(self.settings["faststart"]),
         )
-        self.merger = Merger(
+        self.task = Merger(
             self.tools, job,
             on_progress=lambda p: self.queue.put(("progress", p)),
             on_log=lambda line: self.queue.put(("log", line)))
@@ -618,7 +734,7 @@ class App(tk.Tk):
 
         def work() -> None:
             try:
-                path = self.merger.run()
+                path = self.task.run()
                 self.queue.put(("merge_done", path))
             except Cancelled:
                 self.queue.put(("cancelled", None))
@@ -632,8 +748,8 @@ class App(tk.Tk):
 
     def cancel(self) -> None:
         self._cancel_scan.set()
-        if self.merger:
-            self.merger.cancel()
+        if self.task:
+            self.task.cancel()
         self.lbl_status.configure(text="Membatalkan...")
         self.btn_cancel.configure(state="disabled")
 
@@ -659,6 +775,10 @@ class App(tk.Tk):
                 elif kind == "cancelled":
                     self._set_busy(False, "Dibatalkan.")
                     self.progress["value"] = 0
+                elif kind == "hardsub_scan_done":
+                    self.hardsub.on_scan_done(payload)
+                elif kind == "hardsub_done":
+                    self.hardsub.on_done(payload)
                 elif kind == "ffmpeg_ready":
                     self._on_ffmpeg_ready(payload)
                 elif kind == "error":
@@ -701,8 +821,8 @@ class App(tk.Tk):
             self.settings.save()
             self.tools = tools
             self.lbl_ffmpeg.configure(
-                text=f"FFmpeg {tools.version} ({tools.source})",
-                style="Hint.TLabel")
+                text=f"FFmpeg {_short_version(tools.version)} "
+                     f"({tools.source})", style="Hint.TLabel")
             self._detect_encoders()
             messagebox.showinfo(APP_NAME, "FFmpeg berhasil dipasang.")
         else:
@@ -777,7 +897,7 @@ class App(tk.Tk):
                           if self.tree.index(i) < len(self.files)}
         self.tree.delete(*self.tree.get_children())
         for index, f in enumerate(self.files, start=1):
-            tags = []
+            tags = ["odd"] if index % 2 else []
             if not f.valid:
                 tags.append("bad")
             elif not f.selected:
@@ -836,7 +956,7 @@ class App(tk.Tk):
     def _set_busy(self, busy: bool, status: str = "") -> None:
         self.busy = busy
         state = "disabled" if busy else "normal"
-        self.btn_merge.configure(state=state)
+        self.btn_primary.configure(state=state)
         self.btn_cancel.configure(state="normal" if busy else "disabled")
         if status:
             self.lbl_status.configure(text=status)
@@ -862,7 +982,9 @@ class App(tk.Tk):
                 # window for 0.7 s on a large folder - per tick.
                 self.tree.set(item, "check",
                               CHECKED if video.selected else UNCHECKED)
-                self.tree.item(item, tags=() if video.selected else ("off",))
+                stripe = ("odd",) if (index + 1) % 2 else ()
+                self.tree.item(item, tags=stripe + (
+                    () if video.selected else ("off",)))
                 self._update_summary()
             self._drag_from = None
             return "break"
@@ -931,10 +1053,17 @@ class App(tk.Tk):
                 worker.join(timeout=15)
         try:
             self.settings["window_geometry"] = self.geometry()
+            self.settings["active_tab"] = self._active_tab()
             self.settings.save()
         except Exception:
             pass
         self.destroy()
+
+
+def _short_version(text: str) -> str:
+    """'8.1.1-full_build-www.gyan.dev' -> '8.1.1'."""
+    head = (text or "").strip().split("-", 1)[0]
+    return head or (text or "?")
 
 
 def _fmt_mtime(mtime: float) -> str:

@@ -21,7 +21,7 @@ REM ============================================================
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-set "VERSION=1.0.0"
+set "VERSION=1.1.0"
 set "SETUP=installer\Output\VideoMerger-%VERSION%-Setup.exe"
 
 echo.

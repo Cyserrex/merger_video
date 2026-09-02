@@ -4,8 +4,8 @@
 # Consumed by PyInstaller via --version-file.
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 0, 0, 0),
-    prodvers=(1, 0, 0, 0),
+    filevers=(1, 1, 0, 0),
+    prodvers=(1, 1, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -20,12 +20,12 @@ VSVersionInfo(
           '040904B0',
           [StringStruct('CompanyName', 'Video Merger'),
            StringStruct('FileDescription', 'Penggabung Video - gabungkan banyak video menjadi satu'),
-           StringStruct('FileVersion', '1.0.0.0'),
+           StringStruct('FileVersion', '1.1.0.0'),
            StringStruct('InternalName', 'VideoMerger'),
            StringStruct('LegalCopyright', ''),
            StringStruct('OriginalFilename', 'VideoMerger.exe'),
            StringStruct('ProductName', 'Video Merger'),
-           StringStruct('ProductVersion', '1.0.0.0')])
+           StringStruct('ProductVersion', '1.1.0.0')])
       ]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
   ]

@@ -15,7 +15,7 @@ from typing import Any, Callable, Optional
 
 APP_NAME = "Video Merger"
 APP_ID = "vmerge"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 # Extensions we consider "a video" when scanning a folder. Deliberately wide:
 # CCTV exports (.dav, .264, .h264) and camcorder formats (.mts, .m2ts) count.

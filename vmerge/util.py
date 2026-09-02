@@ -119,11 +119,17 @@ def run_capture(cmd: Sequence[str], timeout: Optional[float] = None
 
 
 def popen_stream(cmd: Sequence[str], merge_stderr: bool = False,
-                 stdin_pipe: bool = False) -> subprocess.Popen:
+                 stdin_pipe: bool = False,
+                 cwd: Optional[str] = None) -> subprocess.Popen:
     """Launch a long-running command whose output we read line by line.
 
     `stdin_pipe=True` keeps ffmpeg's stdin open so we can send it "q" for a
     graceful stop (which flushes the container index) instead of killing it.
+
+    `cwd` is what lets the subtitle burner hand ffmpeg a bare filename. The
+    ``subtitles`` filter parses its argument as part of the filter graph, so a
+    real Windows path drags in a colon, backslashes and possibly brackets that
+    all mean something there; running from the folder side-steps every one.
     """
     return subprocess.Popen(
         list(cmd),
@@ -134,6 +140,7 @@ def popen_stream(cmd: Sequence[str], merge_stderr: bool = False,
         errors="replace",
         bufsize=1,               # line buffered; -progress writes line by line
         universal_newlines=True,
+        cwd=cwd,
         **no_window_kwargs(),
     )
 

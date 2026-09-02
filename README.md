@@ -18,7 +18,7 @@ Ada dua cara, keduanya sah:
 
 | Berkas | Untuk siapa |
 |---|---|
-| **`VideoMerger-1.0.0-Setup.exe`** — installer | Pemakaian biasa. Membuat pintasan Start Menu / Desktop, terdaftar di *Apps & features*, bisa dihapus rapi. Bisa dipasang **tanpa hak administrator** — pilih "Pasang hanya untuk saya". |
+| **`VideoMerger-1.1.0-Setup.exe`** — installer | Pemakaian biasa. Membuat pintasan Start Menu / Desktop, terdaftar di *Apps & features*, bisa dihapus rapi. Bisa dipasang **tanpa hak administrator** — pilih "Pasang hanya untuk saya". |
 | **`VideoMerger.exe`** — satu file, tanpa pasang | Dijalankan dari flashdisk atau folder jaringan, atau di PC yang melarang pemasangan. Tinggal klik dua kali. |
 
 Keduanya tersedia di [halaman Releases](../../releases).
@@ -33,17 +33,64 @@ memasangnya kembali.
 
 ---
 
-## Cara pakai (untuk pengguna)
+## Dua fungsi, dua tab
+
+| Tab | Untuk apa |
+|---|---|
+| **Gabungkan Video** | Menyatukan banyak video jadi satu, urut nama atau tanggal. |
+| **Subtitle Permanen** | Membakar subtitle ke dalam gambar (hardsub), supaya tampil di TV, DVD/VCD player, dan pemutar yang mengabaikan subtitle terpisah. |
+
+### Format yang didukung
+
+**MP4 dan MKV didukung penuh**, baik sebagai masukan maupun keluaran — begitu juga
+MOV, AVI, TS, M2TS, WMV, FLV, WebM, MPG, 3GP, dan lainnya (33 ekstensi total).
+Keluaran bisa `.mp4`, `.mkv`, `.mov`, `.ts`, `.avi`, `.webm`, `.flv`, `.mpg`.
+
+---
+
+## Menggabungkan video
 
 1. Jalankan **`VideoMerger.exe`** (klik dua kali).
-2. Klik **Pilih Folder...** dan arahkan ke folder berisi video.
-3. Periksa urutannya di daftar. Ubah lewat **Urutkan:** atau geser baris dengan mouse.
+2. Tab **Gabungkan Video** → **Pilih Folder**, arahkan ke folder berisi video.
+3. Periksa urutannya di daftar. Ubah lewat **Urutkan** atau geser baris dengan mouse.
 4. Tentukan nama file hasil di kolom **Simpan sebagai**.
 5. Klik **GABUNGKAN VIDEO**.
 
 Kalau semua video punya format identik (kasus paling umum: satu kamera, satu pengaturan),
 penggabungan berjalan **tanpa encode ulang** — 100 video berdurasi total 8 jam selesai
 dalam hitungan menit, dan kualitasnya sama persis dengan aslinya.
+
+---
+
+## Subtitle permanen (hardsub)
+
+Video `.mkv` sering membawa subtitle sebagai **trek terpisah** (softsub). Pemutar di
+komputer bisa menampilkannya, tetapi TV, DVD/VCD player, dan pemutar USB umumnya
+mengabaikan trek itu — videonya jalan, teksnya hilang. **Hardsub** menggambar teks
+langsung ke dalam gambarnya, sehingga jadi bagian dari video dan tampil di mana pun.
+
+1. Tab **Subtitle Permanen** → **Pilih Folder** (atau **Pilih Berkas** untuk satu video).
+2. Aplikasi otomatis mencari subtitle untuk tiap video:
+   - trek di **dalam** video — trek berbahasa Indonesia dipilih lebih dulu, lalu trek
+     bawaan (*default*);
+   - berkas **`.srt` / `.ass`** senama di folder yang sama, termasuk pola
+     `Episode 01.id.srt`.
+3. Mau ganti? Pilih barisnya, lalu tentukan di **Subtitle untuk baris terpilih**,
+   atau klik **Ambil dari Berkas**.
+4. Opsional: centang **Atur tampilan subtitle** untuk mengubah font, ukuran, warna,
+   dan garis tepi. Tanpa ini, berkas `.ass` mempertahankan gayanya sendiri.
+5. Klik **BAKAR SUBTITLE**.
+
+> **Hardsub selalu meng-encode ulang gambar** — pikselnya berubah, jadi tidak ada
+> jalan cepat seperti pada penggabungan. Audionya disalin apa adanya (tidak
+> di-encode ulang), sehingga tidak ada penurunan kualitas suara dan prosesnya lebih
+> cepat. Trek subtitle lunaknya dibuang dari hasil supaya teks tidak tergambar dua kali.
+
+Subtitle berbasis **gambar** (PGS dari Blu-ray, VobSub dari DVD) juga didukung —
+ditempelkan dengan `overlay`, bukan digambar ulang oleh libass.
+
+Trek bertanda **paksa** (*forced*) sengaja tidak dipilih otomatis: trek itu hanya
+memuat baris berbahasa asing, jadi membakarnya menghasilkan video yang hampir tanpa teks.
 
 ### Syarat
 
@@ -166,6 +213,36 @@ VideoMerger.exe -i "D:\CCTV\Januari" -o "D:\hasil.mp4" --strict
 | `--strict` | berhenti dengan kode galat 5 kalau ada file yang dilewati (berguna untuk Task Scheduler, supaya 97 dari 100 rekaman tidak diam-diam dianggap sukses) |
 | `--list` | hanya tampilkan daftar |
 
+### Hardsub dari baris perintah
+
+```bat
+REM lihat video mana saja yang punya subtitle, tanpa memproses
+VideoMerger.exe --hardsub -i "D:\Film" --list
+
+REM bakar subtitle seluruh folder, hasil ke folder terpisah
+VideoMerger.exe --hardsub -i "D:\Film" --out-dir "D:\Film\hardsub"
+
+REM satu berkas saja, pakai .srt tertentu
+VideoMerger.exe --hardsub -i "D:\Film\Episode 1.mkv" --sub-file "D:\Film\id.srt"
+
+REM pilih trek berbahasa Indonesia, font besar untuk ditonton di TV
+VideoMerger.exe --hardsub -i "D:\Film" --sub-lang ind --sub-style --sub-size 32
+```
+
+| Argumen | Arti |
+|---|---|
+| `--hardsub` | bakar subtitle, bukan menggabungkan. `-i` boleh folder **atau** satu berkas |
+| `--sub-file FILE` | pakai berkas `.srt`/`.ass` ini untuk semua video |
+| `--sub-track N` | pakai trek subtitle ke-N di dalam video (mulai dari 1) |
+| `--sub-lang KODE` | pilih trek berdasarkan bahasa, mis. `ind`, `eng` |
+| `--sub-style` | terapkan `--sub-font` dan `--sub-size` |
+| `--suffix` | akhiran nama hasil (default `" - hardsub"`) |
+| `--out-dir FOLDER` | folder hasil (default: di samping video asli) |
+| `--container` | format hasil, mis. `.mp4` atau `.mkv` |
+
+Kode keluar `1` kalau ada video yang gagal, walaupun sebagian berhasil — supaya tugas
+terjadwal tidak menganggapnya sukses.
+
 Jalankan `VideoMerger.exe --help` untuk daftar lengkap.
 
 ---
@@ -203,7 +280,7 @@ build_installer.bat
 ```
 
 Skrip ini membangun exe-nya dulu, lalu mengompilasi
-`installer\Output\VideoMerger-1.0.0-Setup.exe` (±12 MB). Inno Setup dicari di
+`installer\Output\VideoMerger-1.1.0-Setup.exe` (±12 MB). Inno Setup dicari di
 Program Files maupun di `%LOCALAPPDATA%\Programs` (lokasi yang dipakai winget kalau
 dipasang tanpa hak admin), jadi tidak perlu ada di PATH.
 
@@ -219,7 +296,7 @@ Set `VMERGE_NOPAUSE=1` supaya skrip tidak berhenti menunggu tombol (dipakai CI).
 Uji installer tanpa mengklik apa pun:
 
 ```bat
-VideoMerger-1.0.0-Setup.exe /VERYSILENT /CURRENTUSER /DIR=C:\uji\vm
+VideoMerger-1.1.0-Setup.exe /VERYSILENT /CURRENTUSER /DIR=C:\uji\vm
 C:\uji\vm\unins000.exe /VERYSILENT
 ```
 
@@ -251,8 +328,13 @@ py -3.11 app.py
 py -3.11 -m tests.test_compat
 ```
 
-52 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
+67 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
 **membuktikan** kerusakannya nyata sebelum memeriksa bahwa aplikasi menolaknya.
+
+Tes hardsub-nya juga tidak percaya pada kode keluar: video sumbernya **hitam polos**,
+lalu luminansi puncak di seperempat bawah gambar diukur ulang. Kalau tidak ada teks
+yang benar-benar tergambar, angkanya tetap 16 (hitam) dan tesnya gagal — walaupun
+FFmpeg melaporkan sukses.
 
 ---
 
@@ -266,8 +348,14 @@ vmerge/
   scanner.py              memindai folder
   sorting.py              pengurutan (StrCmpLogicalW) + parser tanggal
   probe.py                pembacaan ffprobe paralel
-  merger.py               membangun & menjalankan perintah ffmpeg
-  gui.py                  antarmuka Tkinter
+  runner.py               menjalankan satu proses ffmpeg: progres, batal,
+                          deteksi gagal walau kode keluarnya 0
+  merger.py               menyusun perintah penggabungan
+  subtitle.py             menemukan & menyiapkan subtitle untuk dibakar
+  hardsub.py              mesin subtitle permanen
+  theme.py                palet warna & gaya ttk (satu-satunya tempat warna)
+  gui.py                  jendela, tab "Gabungkan Video"
+  gui_hardsub.py          tab "Subtitle Permanen"
   cli.py                  antarmuka baris perintah
   settings.py             preferensi di %APPDATA%\vmerge
   util.py                 subprocess Windows, path, DPI

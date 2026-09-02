@@ -28,6 +28,26 @@ DEFAULTS: dict[str, Any] = {
     "window_geometry": "",
     "ffmpeg_dir": "",            # manual override set from the GUI
     "keep_log_lines": 500,
+    "active_tab": 0,
+
+    # -- hardsub -----------------------------------------------------------
+    "hardsub_input_dir": "",
+    "hardsub_output_dir": "",    # "" = di sebelah tiap video sumbernya
+    "hardsub_suffix": " - hardsub",
+    "hardsub_container": ".mp4",
+    # Lower than the merge default on purpose: sharp text edges are exactly
+    # what compression smears first, and unreadable subtitles defeat the
+    # whole point of burning them in.
+    "hardsub_crf": 20,
+    "hardsub_copy_audio": True,
+    "sub_style_enabled": False,
+    "sub_font": "Arial",
+    "sub_size": 24,
+    "sub_primary": "#FFFFFF",
+    "sub_outline_color": "#000000",
+    "sub_outline": 2,
+    "sub_bold": False,
+    "sub_margin_v": 20,
 }
 
 

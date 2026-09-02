@@ -30,6 +30,11 @@ from vmerge.probe import probe_many  # noqa: E402
 from vmerge.sorting import (explorer_sort_key, natural_key,  # noqa: E402
                             parse_timestamp_from_name)
 
+from vmerge.hardsub import (HardsubItem, HardsubJob,  # noqa: E402
+                            Hardsubber, collect_sources)
+from vmerge.subtitle import (SubtitleStyle, list_tracks,  # noqa: E402
+                             pick_default_track, sidecar_subs)
+
 TOOLS = locate()
 FAILURES: list[str] = []
 PASSES = 0
@@ -423,6 +428,188 @@ def test_clean_output(work: str) -> None:
               f"{real_duration(out):.3f}")
 
 
+def brightest(path: str, crop: str = "iw:ih/4:0:ih*3/4") -> float:
+    """Peak luma in a region of the video. A pure black clip returns ~0.
+
+    This is how the burn is *proved*: the source is solid black, so any light
+    pixel in the bottom quarter can only be subtitle text that ffmpeg drew
+    into the picture. Checking the exit code would pass just as happily on a
+    file where nothing was drawn at all.
+    """
+    # file=- is not decoration: metadata=print logs at INFO level, so with
+    # the -v error this needs to stay quiet it prints nothing at all and
+    # every measurement silently comes back 0 - which reads as "no text was
+    # burned" no matter what the file contains.
+    res = subprocess.run(
+        [TOOLS.ffmpeg, "-v", "error", "-i", path,
+         "-vf", f"crop={crop},signalstats,"
+                "metadata=print:key=lavfi.signalstats.YMAX:file=-",
+         "-f", "null", "-"],
+        capture_output=True, text=True)
+    peaks = []
+    for line in (res.stdout + res.stderr).splitlines():
+        if "YMAX" in line:
+            try:
+                peaks.append(float(line.rsplit("=", 1)[1]))
+            except (ValueError, IndexError):
+                pass
+    return max(peaks) if peaks else 0.0
+
+
+def sub_stream_count(path: str) -> int:
+    res = subprocess.run(
+        [TOOLS.ffprobe, "-v", "error", "-select_streams", "s",
+         "-show_entries", "stream=index", "-of", "csv=p=0", path],
+        capture_output=True, text=True)
+    return len([ln for ln in res.stdout.splitlines() if ln.strip()])
+
+
+SRT_TEXT = (
+    "1" + chr(10)
+    + "00:00:00,200 --> 00:00:04,800" + chr(10)
+    + "SUBTITLE UJI COBA" + chr(10) + chr(10)
+)
+
+
+def make_black_with_softsub(work: str, name: str) -> tuple[str, str]:
+    """A solid-black video carrying a soft subtitle track, plus the .srt."""
+    black = make(
+        os.path.join(work, name + "_src.mp4"),
+        "-f", "lavfi", "-i", "color=c=black:size=640x360:rate=25:duration=5",
+        "-f", "lavfi", "-i", "sine=frequency=440:duration=5",
+        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-ar", "48000", "-ac", "2", "-shortest")
+
+    srt = os.path.join(work, name + ".srt")
+    with open(srt, "w", encoding="utf-8") as handle:
+        handle.write(SRT_TEXT)
+
+    mkv = os.path.join(work, name + ".mkv")
+    subprocess.run([TOOLS.ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+                    "-i", black, "-i", srt, "-map", "0", "-map", "1",
+                    "-c", "copy", "-c:s", "srt", mkv], check=True)
+    return mkv, srt
+
+
+def test_hardsub(work: str) -> None:
+    print("\n[9] Hardsub (subtitle permanen)")
+    folder = os.path.join(work, "hardsub")
+    os.makedirs(folder, exist_ok=True)
+    mkv, srt = make_black_with_softsub(folder, "episode01")
+
+    # -- the soft subtitle really is invisible in the picture --------------
+    check("sumber: trek subtitle terbaca", sub_stream_count(mkv) == 1,
+          str(sub_stream_count(mkv)))
+    dark = brightest(mkv)
+    check("sumber: gambarnya hitam polos (softsub tidak tergambar)",
+          dark < 40, f"YMAX={dark}")  # 16 = hitam pada rentang terbatas
+
+    tracks = list_tracks(TOOLS, mkv)
+    check("deteksi trek subtitle di dalam MKV", len(tracks) == 1,
+          str(tracks))
+    check("trek dikenali sebagai teks", bool(tracks) and tracks[0].is_text,
+          tracks[0].codec if tracks else "-")
+
+    # -- burn from the embedded track --------------------------------------
+    video = probed(mkv)
+    item = HardsubItem(video=video, track=tracks[0], tracks=tracks)
+    job = HardsubJob(items=[item], output_dir=folder, container=".mp4",
+                     target=TargetSpec(preset="ultrafast", crf=20))
+    result = Hardsubber(TOOLS, job, on_progress=lambda p: None,
+                        on_log=lambda line: None).run()
+
+    check("hardsub menghasilkan satu berkas", len(result.done) == 1,
+          str(result.done))
+    out = result.done[0] if result.done else ""
+    if not out:
+        return
+
+    lit = brightest(out)
+    check("teks benar-benar terbakar ke gambar", lit > 150,
+          f"YMAX={lit} (sumber {dark})")
+    check("trek subtitle lunak dibuang dari hasil",
+          sub_stream_count(out) == 0, str(sub_stream_count(out)))
+    check("durasi hasil sama dengan sumber",
+          abs(real_duration(out) - real_duration(mkv)) < 0.35,
+          f"{real_duration(out):.3f} vs {real_duration(mkv):.3f}")
+    check("audio ikut terbawa", probed(out).has_audio, "tidak ada audio")
+
+    # -- burn from a sidecar .srt ------------------------------------------
+    found = sidecar_subs(mkv)
+    check("berkas .srt di samping video ditemukan",
+          bool(found) and os.path.samefile(found[0], srt),
+          str(found))
+
+    plain = probed(make(
+        os.path.join(folder, "polos.mp4"),
+        "-f", "lavfi", "-i", "color=c=black:size=640x360:rate=25:duration=5",
+        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"))
+    ext_job = HardsubJob(items=[HardsubItem(video=plain, external_path=srt)],
+                         output_dir=folder, suffix=" - eksternal",
+                         container=".mkv",
+                         target=TargetSpec(preset="ultrafast", crf=20))
+    ext = Hardsubber(TOOLS, ext_job, on_progress=lambda p: None,
+                     on_log=lambda line: None).run()
+    check("hardsub dari berkas .srt terpisah berhasil", len(ext.done) == 1,
+          str(ext.failed))
+    if ext.done:
+        check("teks dari .srt terpisah ikut terbakar",
+              brightest(ext.done[0]) > 150,
+              f"YMAX={brightest(ext.done[0])}")
+
+    # -- styling actually reaches libass -----------------------------------
+    styled_job = HardsubJob(
+        items=[HardsubItem(video=plain, external_path=srt)],
+        output_dir=folder, suffix=" - besar", container=".mp4",
+        style=SubtitleStyle(enabled=True, size=48, primary="#FFFFFF"),
+        target=TargetSpec(preset="ultrafast", crf=20))
+    styled = Hardsubber(TOOLS, styled_job, on_progress=lambda p: None,
+                        on_log=lambda line: None).run()
+    if styled.done and ext.done:
+        # Bigger font paints more lit pixels. Comparing areas rather than
+        # peak brightness is what makes this sensitive to the size setting
+        # at all - peak luma is white either way.
+        big = lit_area(styled.done[0])
+        small = lit_area(ext.done[0])
+        check("ukuran font pada gaya subtitle benar-benar berpengaruh",
+              big > small * 1.3, f"besar={big} kecil={small}")
+
+    # -- refuses to overwrite its own input --------------------------------
+    same = HardsubJob(items=[HardsubItem(video=video, track=tracks[0])],
+                      output_dir=folder, suffix="", container=".mkv")
+    try:
+        Hardsubber(TOOLS, same, on_progress=lambda p: None,
+                   on_log=lambda line: None).run()
+        check("menolak menimpa video aslinya", False, "tidak menolak")
+    except MergeError as exc:
+        check("menolak menimpa video aslinya", "sama dengan" in str(exc),
+              str(exc)[:80])
+
+    # -- a video with no subtitle at all is reported, not guessed at -------
+    items = collect_sources(TOOLS, [plain])
+    check("video tanpa subtitle ditandai, bukan diproses diam-diam",
+          bool(items) and not items[0].selected and bool(items[0].error),
+          str(items))
+
+
+def lit_area(path: str) -> int:
+    """How many pixels are lit, summed over sampled frames."""
+    res = subprocess.run(
+        [TOOLS.ffmpeg, "-v", "error", "-i", path,
+         "-vf", "crop=iw:ih/3:0:ih*2/3,signalstats,"
+                "metadata=print:key=lavfi.signalstats.YAVG:file=-",
+         "-f", "null", "-"],
+        capture_output=True, text=True)
+    total = 0.0
+    for line in (res.stdout + res.stderr).splitlines():
+        if "YAVG" in line:
+            try:
+                total += float(line.rsplit("=", 1)[1])
+            except (ValueError, IndexError):
+                pass
+    return int(total * 100)
+
+
 def main() -> int:
     if not TOOLS:
         print("FFmpeg tidak ditemukan - tes dilewati.")
@@ -439,6 +626,7 @@ def main() -> int:
         ("progres", lambda: test_progress(work)),
         ("mode hemat", lambda: test_smart_selection(work)),
         ("keluaran bersih", lambda: test_clean_output(work)),
+        ("hardsub", lambda: test_hardsub(work)),
     ]
     try:
         # Each section is isolated: an exception in one used to abort the run
