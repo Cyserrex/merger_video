@@ -55,7 +55,10 @@ namespace VideoMerger.App
         private readonly List<Tuple<string, string>> _encoderChoices =
             new List<Tuple<string, string>>();
         private string _autoEncoder = "";          // hasil benchmark, "" = CPU
-        private string _benchDetail = "";
+        // Angka hasil pengukuran, dipakai untuk menyebut kecepatan di tiap
+        // pilihan dan mematikan pilihan yang terbukti tidak jalan. null =
+        // belum pernah diukur di sesi ini.
+        private List<EncoderScore> _benchScores;
         private bool _benchRunning;
         // Pembatalan milik benchmark sendiri, terpisah dari _scanCancel:
         // pemindaian folder mengganti _scanCancel dengan yang baru setiap kali
@@ -74,6 +77,22 @@ namespace VideoMerger.App
             "Arial", "Segoe UI", "Tahoma", "Verdana", "Times New Roman",
             "Calibri", "Roboto", "Noto Sans",
         };
+
+        /// <summary>
+        /// Penyaring kotak dialog "Pilih Berkas", dipakai kedua tab. Disusun
+        /// dari daftar ekstensi yang sama dengan pemindai folder, supaya
+        /// keduanya tidak pernah berbeda pendapat soal apa itu "video" -
+        /// daftar yang dipatok sendiri di sini dulu hanya memuat 7 dari 30
+        /// ekstensi yang sebenarnya didukung.
+        /// </summary>
+        private static readonly string VideoFilter = BuildVideoFilter();
+
+        private static string BuildVideoFilter()
+        {
+            var patterns = new List<string>();
+            foreach (string ext in AppInfo.VideoExtensions) patterns.Add("*" + ext);
+            return "Video|" + string.Join(";", patterns) + "|Semua file|*.*";
+        }
 
         public MainWindow()
         {
@@ -252,14 +271,15 @@ namespace VideoMerger.App
             // Diberi nilai awal: operator && memutus jalur ketika
             // forceBenchmark true, sehingga TryCached tidak pernah terpanggil
             // dan variabel out-nya tidak pernah terisi.
-            string cachedBest = "", cachedDetail = "";
+            string cachedBest = "";
+            List<EncoderScore> cachedScores = null;
             bool haveCache = !forceBenchmark
                 && EncoderBenchmark.TryCached(_settings, tools,
-                                              out cachedBest, out cachedDetail);
+                                              out cachedBest, out cachedScores);
             if (haveCache)
             {
                 _autoEncoder = cachedBest;
-                _benchDetail = cachedDetail;
+                _benchScores = cachedScores;
                 BuildEncoderList(EncoderBenchmark.Listed(tools));
                 return;
             }
@@ -313,13 +333,7 @@ namespace VideoMerger.App
                     if (complete)
                     {
                         _autoEncoder = EncoderBenchmark.Best(scores);
-                        var sb = new StringBuilder();
-                        foreach (var score in scores)
-                        {
-                            if (sb.Length > 0) sb.Append("; ");
-                            sb.Append(score.Describe());
-                        }
-                        _benchDetail = sb.ToString();
+                        _benchScores = scores;
                     }
                     else
                     {
@@ -327,8 +341,7 @@ namespace VideoMerger.App
                         // separuh jadi untuk sesi ini juga. Biarkan pilihan
                         // bawaan (CPU) dan katakan apa adanya.
                         _autoEncoder = "";
-                        _benchDetail = "Pengukuran dibatalkan - "
-                                       + "tekan \"Uji ulang\" untuk mencoba lagi.";
+                        _benchScores = null;
                     }
                     BuildEncoderList(listed);
                     if (LblStatus.Text == "Mengukur kecepatan encoder..."
@@ -336,6 +349,28 @@ namespace VideoMerger.App
                         LblStatus.Text = "Siap.";
                 });
             });
+        }
+
+        /// <summary>Kecepatan terukur satu encoder, atau null kalau belum diukur.</summary>
+        private EncoderScore ScoreOf(string id)
+        {
+            if (_benchScores == null) return null;
+            foreach (var score in _benchScores)
+                if (score.Candidate != null && score.Candidate.Id == id) return score;
+            return null;
+        }
+
+        /// <summary>
+        /// Label satu pilihan, lengkap dengan kecepatannya:
+        /// "NVIDIA NVENC (H.264) - 297 fps".
+        /// </summary>
+        private string EncoderLabel(string id, string baseLabel)
+        {
+            var score = ScoreOf(id);
+            if (score == null) return baseLabel;
+            if (!score.Works) return baseLabel + "  -  tidak didukung di PC ini";
+            return baseLabel + "  -  "
+                   + score.Fps.ToString("0", CultureInfo.InvariantCulture) + " fps";
         }
 
         private void BuildEncoderList(List<EncoderCandidate> listed)
@@ -348,24 +383,71 @@ namespace VideoMerger.App
             // terpotong jadi "...(CPU (libx" di kotak selebar apa pun yang wajar.
             _encoderChoices.Add(Tuple.Create("__auto__",
                 "Otomatis - " + EncoderBenchmark.LabelOf(_autoEncoder)));
-            _encoderChoices.Add(Tuple.Create("", "CPU (libx264)"));
+            _encoderChoices.Add(Tuple.Create("",
+                EncoderLabel("libx264", "CPU (libx264)")));
             foreach (var candidate in listed)
                 if (candidate.Vendor != "CPU")
-                    _encoderChoices.Add(Tuple.Create(candidate.Id, candidate.Label));
+                    _encoderChoices.Add(Tuple.Create(candidate.Id,
+                        EncoderLabel(candidate.Id, candidate.Label)));
 
             CmbEncoder.SelectionChanged -= OnEncoderChanged;
             CmbEncoder.Items.Clear();
-            foreach (var choice in _encoderChoices) CmbEncoder.Items.Add(choice.Item2);
+            foreach (var choice in _encoderChoices)
+            {
+                // ComboBoxItem, bukan string biasa: encoder yang sudah TERBUKTI
+                // gagal saat diukur tetap ditampilkan - menghilangkannya bikin
+                // orang bertanya "kenapa AMD tidak ada?" - tetapi tidak boleh
+                // bisa dipilih. `ffmpeg -encoders` mendaftarkan h264_amf di
+                // komputer tanpa GPU AMD sekalipun.
+                var score = ScoreOf(choice.Item1 == "" ? "libx264" : choice.Item1);
+                CmbEncoder.Items.Add(new ComboBoxItem
+                {
+                    Content = choice.Item2,
+                    IsEnabled = choice.Item1 == "__auto__"
+                                || score == null || score.Works,
+                });
+            }
 
             string saved = _settings.GetBool("encoder_auto")
                 ? "__auto__" : _settings["hwaccel_encoder"];
             int index = _encoderChoices.FindIndex(c => c.Item1 == saved);
+            // Pilihan tersimpan bisa jadi encoder yang kini tidak jalan lagi
+            // (driver dicopot, GPU diganti). Jangan biarkan kotaknya menunjuk
+            // pilihan mati - kembalikan ke Otomatis.
+            if (index >= 0)
+            {
+                var savedItem = CmbEncoder.Items[index] as ComboBoxItem;
+                if (savedItem != null && !savedItem.IsEnabled) index = 0;
+            }
             CmbEncoder.SelectedIndex = index >= 0 ? index : 0;
             CmbEncoder.IsEnabled = true;
             CmbEncoder.SelectionChanged += OnEncoderChanged;
 
-            LblEncoderNote.Text = _benchDetail;
-            LblEncoderNote.ToolTip = _benchDetail;
+            LblEncoderNote.Text = EncoderNote();
+            LblEncoderNote.ToolTip = LblEncoderNote.Text;
+        }
+
+        /// <summary>Keterangan ringkas di samping kotak pilihan.</summary>
+        private string EncoderNote()
+        {
+            if (_benchScores == null || _benchScores.Count == 0)
+                return "Kecepatan belum diukur - tekan \"Uji ulang\".";
+
+            var working = new List<EncoderScore>();
+            int broken = 0;
+            foreach (var score in _benchScores)
+                if (score.Works) working.Add(score); else broken++;
+            if (working.Count == 0) return "Tidak ada encoder yang bisa dipakai.";
+
+            working.Sort((a, b) => b.Fps.CompareTo(a.Fps));
+            var sb = new StringBuilder("Tercepat: ");
+            sb.Append(working[0].Candidate.Label).Append(" (")
+              .Append(working[0].Fps.ToString("0", CultureInfo.InvariantCulture))
+              .Append(" fps)");
+            if (broken > 0)
+                sb.Append("  -  ").Append(broken)
+                  .Append(" encoder tidak didukung di PC ini");
+            return sb.ToString();
         }
 
         /// <summary>Encoder yang benar-benar dipakai, setelah "Otomatis" diterjemahkan.</summary>
@@ -673,6 +755,171 @@ namespace VideoMerger.App
         }
 
         private void OnRescan(object sender, RoutedEventArgs e) => Rescan();
+
+        private void OnChooseFiles(object sender, RoutedEventArgs e)
+        {
+            if (BusyGuard()) return;
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Pilih video yang akan digabung",
+                Multiselect = true,
+                Filter = VideoFilter,
+                InitialDirectory = FirstExisting(TxtFolder.Text,
+                                                 _settings["last_input_dir"]),
+            };
+            if (dialog.ShowDialog() != true) return;
+
+            // Urutan yang dipilih di kotak dialog Windows tidak bisa
+            // diandalkan, jadi berkasnya tetap diurutkan dengan aturan yang
+            // sama seperti hasil pemindaian folder.
+            LoadMergeVideos(dialog.FileNames.Select(Scanner.Describe).ToList(),
+                            Path.GetDirectoryName(dialog.FileNames[0]) ?? "");
+        }
+
+        // ------------------------------------------------- seret dan lepas --
+        /// <summary>
+        /// Terima jatuhan hanya kalau isinya berkas/folder, dan tolak selama
+        /// ada pekerjaan berjalan - daftar yang berubah di tengah proses
+        /// membuat yang ditampilkan tidak lagi menggambarkan yang dikerjakan.
+        /// </summary>
+        private void OnDragOverFiles(object sender, DragEventArgs e)
+        {
+            bool ok = !_busy && e.Data.GetDataPresent(DataFormats.FileDrop);
+            e.Effects = ok ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void OnDropFiles(object sender, DragEventArgs e)
+        {
+            var dropped = DroppedPaths(e);
+            if (dropped == null) return;
+
+            // Satu folder dijatuhkan sendirian: perlakukan persis seperti
+            // menekan "Pilih Folder", termasuk mengisi kotak folder - kalau
+            // tidak, "Muat Ulang" berikutnya akan memindai folder lama.
+            if (dropped.Length == 1 && Directory.Exists(dropped[0]))
+            {
+                TxtFolder.Text = dropped[0];
+                Rescan();
+                return;
+            }
+
+            var videos = ExpandDropped(dropped, ChkRecursive.IsChecked == true);
+            if (videos.Count == 0)
+            {
+                MessageBox.Show("Tidak ada berkas video di antara yang dijatuhkan.",
+                                AppInfo.Name, MessageBoxButton.OK,
+                                MessageBoxImage.Information);
+                return;
+            }
+            LoadMergeVideos(videos, Path.GetDirectoryName(videos[0].Path) ?? "");
+        }
+
+        private void OnDropSubs(object sender, DragEventArgs e)
+        {
+            var dropped = DroppedPaths(e);
+            if (dropped == null) return;
+
+            if (dropped.Length == 1 && Directory.Exists(dropped[0]))
+            {
+                TxtSubFolder.Text = dropped[0];
+                SubRescan();
+                return;
+            }
+
+            var videos = ExpandDropped(dropped, false);
+            if (videos.Count == 0)
+            {
+                MessageBox.Show("Tidak ada berkas video di antara yang dijatuhkan.",
+                                AppInfo.Name, MessageBoxButton.OK,
+                                MessageBoxImage.Information);
+                return;
+            }
+            LoadSubVideos(videos);
+        }
+
+        private string[] DroppedPaths(DragEventArgs e)
+        {
+            e.Handled = true;
+            if (BusyGuard()) return null;
+            if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return null;
+            var paths = e.Data.GetData(DataFormats.FileDrop) as string[];
+            return (paths == null || paths.Length == 0) ? null : paths;
+        }
+
+        /// <summary>
+        /// Ubah jatuhan jadi daftar video: folder ditelusuri, berkas disaring
+        /// menurut ekstensi, dan jalur ganda dibuang.
+        /// </summary>
+        private static List<VideoFile> ExpandDropped(string[] dropped, bool recursive)
+        {
+            var videos = new List<VideoFile>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string path in dropped)
+            {
+                try
+                {
+                    if (Directory.Exists(path))
+                    {
+                        foreach (var found in Scanner.ScanFolder(path, recursive))
+                            if (seen.Add(found.Path)) videos.Add(found);
+                    }
+                    else if (File.Exists(path) && Scanner.IsVideoName(path))
+                    {
+                        var video = Scanner.Describe(path);
+                        if (seen.Add(video.Path)) videos.Add(video);
+                    }
+                }
+                catch (Exception)
+                {
+                    continue;   // satu jalur bermasalah tidak membatalkan sisanya
+                }
+            }
+            return videos;
+        }
+
+        /// <summary>
+        /// Periksa sekumpulan video lalu tampilkan di tab gabung, tanpa
+        /// memindai folder mana pun.
+        /// </summary>
+        private void LoadMergeVideos(List<VideoFile> videos, string folderHint)
+        {
+            if (videos.Count == 0) return;
+            if (_tools == null) { DetectFFmpeg(); if (_tools == null) return; }
+            var tools = _tools;
+
+            // Kotak folder dikosongkan: isinya tidak lagi menggambarkan daftar
+            // di bawahnya, dan "Muat Ulang" yang memindai folder lain diam-diam
+            // adalah kejutan yang tidak perlu.
+            TxtFolder.Text = "";
+            if (!string.IsNullOrEmpty(folderHint))
+                _settings.Set("last_input_dir", folderHint);
+
+            _rows.Clear();
+            _scanCancel = new CancellationTokenSource();
+            var token = _scanCancel.Token;
+            SetBusy(true, "Memeriksa " + videos.Count + " video...");
+
+            _worker = Task.Run(() =>
+            {
+                try
+                {
+                    Prober.ProbeMany(tools, videos, 8,
+                        (done, total, v) => Report(new Progress
+                        {
+                            Stage = Stage.Probing,
+                            Fraction = (double)done / Math.Max(1, total),
+                            Message = "Memeriksa video " + done + "/" + total + "...",
+                        }),
+                        () => token.IsCancellationRequested);
+                    Dispatcher.Invoke(() => OnScanDone(videos));
+                }
+                catch (Exception ex)
+                {
+                    Dispatcher.Invoke(() => Fail("Gagal memeriksa video:\n" + ex.Message));
+                }
+            });
+        }
 
         private void Rescan()
         {
@@ -1165,16 +1412,16 @@ namespace VideoMerger.App
             {
                 Title = "Pilih video",
                 Multiselect = true,
-                Filter = "Video|*.mp4;*.mkv;*.avi;*.mov;*.ts;*.m4v;*.webm|Semua file|*.*",
+                Filter = VideoFilter,
                 InitialDirectory = FirstExisting(TxtSubFolder.Text),
             };
             if (dialog.ShowDialog() != true) return;
 
-            var videos = dialog.FileNames.Select(p => new VideoFile
-            {
-                Path = p,
-                Size = SafeLength(p),
-            }).ToList();
+            // Scanner.Describe, bukan dirakit di tempat: berkas yang dipilih
+            // manual dulu kehilangan tanggal berkas dan tanggal dari namanya,
+            // sehingga pengurutan menurut tanggal menaruh semuanya di posisi
+            // yang sama - tanpa gejala apa pun yang terlihat.
+            var videos = dialog.FileNames.Select(Scanner.Describe).ToList();
             LoadSubVideos(videos);
         }
 

@@ -16,7 +16,7 @@ Ada dua cara, keduanya sah:
 | Berkas | Untuk siapa |
 |---|---|
 | **`VideoMerger-1.1.0-Setup.exe`** — installer | Pemakaian biasa. Membuat pintasan Start Menu / Desktop, terdaftar di *Apps & features*, bisa dihapus rapi. Bisa dipasang **tanpa hak administrator** — pilih "Pasang hanya untuk saya". |
-| **`VideoMerger.exe`** — satu file 367 KB, tanpa pasang | Dijalankan dari flashdisk atau folder jaringan, atau di PC yang melarang pemasangan. Tinggal klik dua kali. |
+| **`VideoMerger.exe`** — satu file 374 KB, tanpa pasang | Dijalankan dari flashdisk atau folder jaringan, atau di PC yang melarang pemasangan. Tinggal klik dua kali. |
 
 Keduanya tersedia di [halaman Releases](../../releases). Installernya 2,6 MB.
 
@@ -48,10 +48,18 @@ Keluaran bisa `.mp4`, `.mkv`, `.mov`, `.ts`, `.avi`, `.webm`, `.flv`, `.mpg`.
 ## Menggabungkan video
 
 1. Jalankan **`VideoMerger.exe`** (klik dua kali).
-2. Tab **Gabungkan Video** → **Pilih Folder**, arahkan ke folder berisi video.
+2. Masukkan videonya — ada tiga cara, semuanya setara:
+   - **Pilih Folder** — seluruh isi folder;
+   - **Pilih Berkas** — beberapa berkas tertentu saja (Ctrl+klik untuk banyak);
+   - **seret dan lepas** berkas atau folder langsung ke tabelnya.
 3. Periksa urutannya di daftar. Ubah lewat **Urutkan** atau geser baris dengan mouse.
 4. Tentukan nama file hasil di kolom **Simpan sebagai**.
 5. Klik **GABUNGKAN VIDEO**.
+
+> Menjatuhkan **satu folder** sama dengan menekan Pilih Folder. Menjatuhkan
+> **beberapa berkas** (atau campuran berkas dan folder) memuat persis yang
+> dijatuhkan; kotak folder dikosongkan supaya "Muat Ulang" tidak diam-diam
+> memindai folder lain. Kedua tab menerima jatuhan.
 
 Kalau semua video punya format identik (kasus paling umum: satu kamera, satu pengaturan),
 penggabungan berjalan **tanpa encode ulang** — 100 video berdurasi total 8 jam selesai
@@ -187,6 +195,13 @@ Ini bukan kehati-hatian berlebihan. Hasil nyata di satu mesin uji
 Dua hal yang akan salah kalau ditebak: **QuickSync 2,8× lebih lambat daripada
 CPU**, dan **NVENC H.264 pun kalah tipis**. Aturan "pakai perangkat keras kalau
 ada" justru memperlambat di mesin ini.
+
+Angka itu ikut tertulis **di tiap pilihan** pada kotak Encoder, jadi tidak perlu
+menebak apa yang dipilih "Otomatis" atau seberapa jauh selisihnya. Encoder yang
+terbukti tidak jalan tetap ditampilkan — supaya tidak ada yang bertanya "kenapa
+AMD hilang?" — tetapi **tidak bisa dipilih**, dan diberi keterangan *tidak
+didukung di PC ini*. Kalau pilihan tersimpan ternyata sudah mati (driver dicopot,
+GPU diganti), kotaknya kembali ke Otomatis alih-alih menunjuk pilihan mati.
 
 > **H.265 tidak pernah dipilih otomatis** walaupun paling cepat, karena memilihnya
 > diam-diam mengubah codec keluaran jadi HEVC — dan HEVC persis yang tidak bisa
@@ -349,10 +364,10 @@ Lalu:
 
 ```bat
 build.bat          REM bangun saja
-build.bat test     REM bangun lalu jalankan 126 tes
+build.bat test     REM bangun lalu jalankan 130 tes
 ```
 
-Hasilnya `dist\VideoMerger.exe`, **satu berkas 367 KB**.
+Hasilnya `dist\VideoMerger.exe`, **satu berkas 374 KB**.
 
 `VideoMerger.Core.dll` ditanam ke dalam exe sebagai *embedded resource* dan dimuat
 lewat `AssemblyResolve`, supaya menyalin exe-nya sendirian ke flashdisk tetap
@@ -367,7 +382,7 @@ di sini:
   pemuatannya terjadi sebelum `AssemblyResolve` sempat terpasang.
 
 FFmpeg sengaja **tidak** dibundel: `ffmpeg.exe` build lengkap berukuran 217 MB,
-sehingga aplikasi 367 KB akan membengkak jadi ratusan MB.
+sehingga aplikasi 374 KB akan membengkak jadi ratusan MB.
 
 ### Membuat installer
 
@@ -405,7 +420,7 @@ C:\uji\vm\unins000.exe /VERYSILENT
 dotnet run --project src\VideoMerger.Tests -c Release
 ```
 
-126 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
+130 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
 **membuktikan** kerusakannya nyata sebelum memeriksa bahwa aplikasi menolaknya.
 
 Tes hardsub-nya juga tidak percaya pada kode keluar: video sumbernya **hitam polos**,
@@ -442,7 +457,7 @@ src/
     Rows.cs                 pembungkus baris tabel (INotifyPropertyChanged)
     Cli.cs                  antarmuka baris perintah
     EmbeddedAssemblies.cs   memuat Core.dll dari dalam exe
-  VideoMerger.Tests/        126 tes, semuanya menjalankan FFmpeg sungguhan
+  VideoMerger.Tests/        130 tes, semuanya menjalankan FFmpeg sungguhan
 build.bat                   bangun exe
 build_installer.bat         bangun exe + installer
 installer/setup.iss         skrip Inno Setup

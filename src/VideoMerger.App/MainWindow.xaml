@@ -81,13 +81,16 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="Folder video" Margin="0,0,10,0"/>
                         <TextBox Grid.Column="1" x:Name="TxtFolder"
                                  KeyDown="OnFolderKeyDown"/>
                         <Button Grid.Column="2" Content="Pilih Folder" Margin="8,0,0,0"
                                 Click="OnChooseFolder"/>
-                        <Button Grid.Column="3" Content="Muat Ulang" Margin="6,0,0,0"
+                        <Button Grid.Column="3" Content="Pilih Berkas" Margin="6,0,0,0"
+                                Click="OnChooseFiles"/>
+                        <Button Grid.Column="4" Content="Muat Ulang" Margin="6,0,0,0"
                                 Click="OnRescan"/>
                     </Grid>
                     <CheckBox Grid.Row="1" x:Name="ChkRecursive" Content="Termasuk subfolder"
@@ -119,10 +122,12 @@
                     <TextBlock Grid.Row="4" x:Name="LblEmptyFiles"
                                Style="{StaticResource Empty}"
                                VerticalAlignment="Center" Panel.ZIndex="1"
-                               Text="Belum ada video.&#10;Klik &quot;Pilih Folder&quot; untuk memulai."/>
+                               Text="Belum ada video.&#10;Klik &quot;Pilih Folder&quot; atau &quot;Pilih Berkas&quot; &#8212; atau seret berkas/folder ke sini."/>
                     <DataGrid Grid.Row="4" x:Name="GridFiles" MinHeight="120"
                               MouseDoubleClick="OnFileDoubleClick"
-                              PreviewKeyDown="OnGridKeyDown">
+                              PreviewKeyDown="OnGridKeyDown"
+                              AllowDrop="True" DragOver="OnDragOverFiles"
+                              Drop="OnDropFiles">
                         <DataGrid.Columns>
                             <DataGridTemplateColumn Width="36">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -248,11 +253,13 @@
                     <TextBlock Grid.Row="4" x:Name="LblEmptySubs"
                                Style="{StaticResource Empty}"
                                VerticalAlignment="Center" Panel.ZIndex="1"
-                               Text="Belum ada video.&#10;Pilih folder atau berkas video yang punya subtitle."/>
+                               Text="Belum ada video.&#10;Pilih folder atau berkas &#8212; atau seret ke sini."/>
                     <DataGrid Grid.Row="4" x:Name="GridSubs" MinHeight="100"
                               SelectionChanged="OnSubSelectionChanged"
                               MouseDoubleClick="OnSubDoubleClick"
-                              PreviewKeyDown="OnSubGridKeyDown">
+                              PreviewKeyDown="OnSubGridKeyDown"
+                              AllowDrop="True" DragOver="OnDragOverFiles"
+                              Drop="OnDropSubs">
                         <DataGrid.Columns>
                             <DataGridTemplateColumn Width="36">
                                 <DataGridTemplateColumn.CellTemplate>

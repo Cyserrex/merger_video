@@ -893,15 +893,42 @@ namespace VideoMerger.Tests
                   !EncoderBenchmark.Candidates[1].AutoSelectable
                   && EncoderBenchmark.Candidates[1].Codec == "hevc", "");
 
+            // Angkanya harus bertahan lewat penyimpanan, bukan cuma
+            // kalimatnya: daftar pilihan encoder menyebut fps tiap pilihan dan
+            // mematikan yang tidak jalan, jadi keduanya harus terbaca kembali.
+            var sample = new List<EncoderScore>
+            {
+                new EncoderScore { Candidate = EncoderBenchmark.Candidates[0],
+                                   Works = true, Fps = 297.4 },
+                new EncoderScore { Candidate = EncoderBenchmark.Candidates[3],
+                                   Works = false },
+            };
+            var round = EncoderBenchmark.Deserialize(
+                EncoderBenchmark.Serialize(sample));
+            Check("serialisasi mempertahankan jumlah encoder",
+                  round.Count == 2, round.Count.ToString());
+            Check("serialisasi mempertahankan fps",
+                  round.Count == 2 && round[0].Works
+                  && Math.Abs(round[0].Fps - 297.4) < 0.05,
+                  round.Count == 2 ? round[0].Fps.ToString("0.0",
+                      CultureInfo.InvariantCulture) : "-");
+            Check("serialisasi mempertahankan status tidak-jalan",
+                  round.Count == 2 && !round[1].Works
+                  && round[1].Candidate.Id == "h264_amf", "");
+            Check("teks rusak tidak menabrak",
+                  EncoderBenchmark.Deserialize("sampah;=;x=1;h264_nvenc").Count == 0,
+                  "");
+
             // Cache hanya sah untuk sidik jari yang sama.
             var settings = new AppSettings();
             EncoderBenchmark.StoreCache(settings, Tools, scores, true);
-            string best, detail;
+            string best;
+            List<EncoderScore> cached;
             Check("hasil tersimpan terbaca kembali",
-                  EncoderBenchmark.TryCached(settings, Tools, out best, out detail), "");
+                  EncoderBenchmark.TryCached(settings, Tools, out best, out cached), "");
             settings.Set("encoder_bench_fingerprint", "perangkat-lain");
             Check("sidik jari berbeda membatalkan cache",
-                  !EncoderBenchmark.TryCached(settings, Tools, out best, out detail), "");
+                  !EncoderBenchmark.TryCached(settings, Tools, out best, out cached), "");
 
             // Hasil separuh jadi TIDAK BOLEH tersimpan. Cache-nya diikat ke
             // sidik jari perangkat keras, jadi pemenang yang salah bertahan
@@ -910,7 +937,7 @@ namespace VideoMerger.Tests
             var partial = new AppSettings();
             EncoderBenchmark.StoreCache(partial, Tools, scores, false);
             Check("pengukuran yang dibatalkan tidak ikut tersimpan",
-                  !EncoderBenchmark.TryCached(partial, Tools, out best, out detail),
+                  !EncoderBenchmark.TryCached(partial, Tools, out best, out cached),
                   "hasil separuh jadi masuk cache");
 
             // Pembatalan benar-benar memotong di tengah, bukan sekadar

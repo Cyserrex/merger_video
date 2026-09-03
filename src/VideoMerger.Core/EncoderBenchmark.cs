@@ -216,19 +216,75 @@ namespace VideoMerger.Core
         private const string KeyDetail = "encoder_bench_detail";
 
         /// <summary>
+        /// Ubah hasil pengukuran jadi satu baris yang bisa dibaca kembali:
+        /// <c>h264_nvenc=297.4;h264_amf=x;libx264=316.0</c>.
+        ///
+        /// Angkanya disimpan, bukan cuma kalimat siap tampil, supaya daftar
+        /// pilihan encoder bisa menyebut kecepatan tiap pilihan DAN mematikan
+        /// pilihan yang sudah terbukti tidak jalan. Menyimpannya sebagai
+        /// kalimat berarti angka itu harus diurai balik dari teks Indonesia -
+        /// yang akan patah begitu kalimatnya diubah sedikit saja.
+        /// </summary>
+        public static string Serialize(IList<EncoderScore> scores)
+        {
+            var sb = new StringBuilder();
+            foreach (var score in scores)
+            {
+                if (score == null || score.Candidate == null) continue;
+                if (sb.Length > 0) sb.Append(';');
+                sb.Append(score.Candidate.Id).Append('=');
+                sb.Append(score.Works
+                    ? score.Fps.ToString("0.0", CultureInfo.InvariantCulture)
+                    : "x");
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>Kebalikan Serialize. Ruas yang tidak dikenali dilewati.</summary>
+        public static List<EncoderScore> Deserialize(string text)
+        {
+            var scores = new List<EncoderScore>();
+            if (string.IsNullOrWhiteSpace(text)) return scores;
+
+            foreach (string part in text.Split(';'))
+            {
+                int eq = part.IndexOf('=');
+                if (eq <= 0) continue;
+                string id = part.Substring(0, eq).Trim();
+                string value = part.Substring(eq + 1).Trim();
+
+                EncoderCandidate candidate = null;
+                foreach (var c in Candidates)
+                    if (c.Id == id) { candidate = c; break; }
+                if (candidate == null) continue;
+
+                double fps;
+                bool works = double.TryParse(value, NumberStyles.Float,
+                                             CultureInfo.InvariantCulture, out fps);
+                scores.Add(new EncoderScore
+                {
+                    Candidate = candidate,
+                    Works = works,
+                    Fps = works ? fps : 0,
+                });
+            }
+            return scores;
+        }
+
+        /// <summary>
         /// Hasil tersimpan kalau masih sah untuk perangkat keras sekarang.
-        /// `hit` false berarti pengukuran perlu dijalankan.
+        /// Kembalian false berarti pengukuran perlu dijalankan.
         /// </summary>
         public static bool TryCached(AppSettings settings, FFmpegTools tools,
-                                     out string best, out string detail)
+                                     out string best, out List<EncoderScore> scores)
         {
             best = "";
-            detail = "";
+            scores = new List<EncoderScore>();
             if (settings == null || tools == null) return false;
             string current = Hardware.Fingerprint(tools);
             if (settings[KeyFingerprint] != current) return false;
             best = settings[KeyBest];
-            detail = settings[KeyDetail];
+            scores = Deserialize(settings[KeyDetail]);
             return true;
         }
 
@@ -242,15 +298,9 @@ namespace VideoMerger.Core
             // gejala yang terlihat pengguna. Lebih baik tidak menyimpan apa-apa
             // dan mengukur ulang nanti.
             if (settings == null || tools == null || !complete) return;
-            var sb = new StringBuilder();
-            foreach (var score in scores)
-            {
-                if (sb.Length > 0) sb.Append("; ");
-                sb.Append(score.Describe());
-            }
             settings.Set(KeyFingerprint, Hardware.Fingerprint(tools));
             settings.Set(KeyBest, Best(scores));
-            settings.Set(KeyDetail, sb.ToString());
+            settings.Set(KeyDetail, Serialize(scores));
             settings.Save();
         }
 

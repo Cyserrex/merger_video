@@ -17,6 +17,36 @@ namespace VideoMerger.Core
         }
 
         /// <summary>
+        /// Bangun VideoFile dari satu jalur berkas, lengkap dengan waktu dan
+        /// tanggal yang terurai dari namanya.
+        ///
+        /// Dipakai bersama oleh pemindaian folder, pemilihan berkas manual,
+        /// dan seret-lepas. Menyusunnya sendiri di tiap tempat pernah membuat
+        /// berkas yang dipilih manual kehilangan Modified/CreatedOn/
+        /// NameTimestamp - dan pengurutan menurut tanggal lalu menaruh semuanya
+        /// di posisi yang sama tanpa ada gejala yang terlihat.
+        /// </summary>
+        public static VideoFile Describe(string path)
+        {
+            var video = new VideoFile { Path = path };
+            try
+            {
+                var info = new FileInfo(path);
+                video.Path = info.FullName;
+                video.Size = info.Exists ? info.Length : 0;
+                video.Modified = info.Exists ? info.LastWriteTime : default(DateTime);
+                video.CreatedOn = info.Exists ? info.CreationTime : default(DateTime);
+                video.NameTimestamp = TimestampParser.Parse(info.Name);
+            }
+            catch (Exception)
+            {
+                // Jalur tidak sah atau tidak terbaca: biarkan apa adanya,
+                // ffprobe yang akan melaporkan alasannya nanti.
+            }
+            return video;
+        }
+
+        /// <summary>
         /// Kumpulkan setiap berkas yang tampak video di bawah `folder`.
         ///
         /// Hasilnya belum diurutkan dan belum diperiksa ffprobe. Atribut berkas
