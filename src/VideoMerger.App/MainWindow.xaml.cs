@@ -419,17 +419,36 @@ namespace VideoMerger.App
 
             if (!check.Managed)
             {
-                // FFmpeg ini milik winget/chocolatey/scoop atau ditaruh sendiri
-                // oleh penggunanya. Menimpanya berarti diam-diam mengambil alih
-                // pemasangan yang bukan kita buat, dan pembaruan berikutnya
-                // dari alat aslinya akan bertabrakan.
+                // FFmpeg ini milik winget/chocolatey/scoop, atau ditaruh
+                // sendiri oleh penggunanya.
+                //
+                // Yang benar-benar tidak boleh hanyalah MENIMPA berkasnya di
+                // tempatnya: nama folder winget bernomor versi, jadi winget
+                // akan tetap mengira versi lama yang terpasang dan "winget
+                // upgrade" berikutnya membatalkan pekerjaan kita.
+                //
+                // Memasang salinan SENDIRI sepenuhnya aman, dan itu yang
+                // ditawarkan di sini: unduhannya masuk ke
+                // %APPDATA%\vmerge\ffmpeg, yang dicari lebih dulu daripada
+                // winget, sehingga versi baru langsung terpakai tanpa
+                // pemasangan milik alat lain tersentuh sama sekali.
                 if (silent) return;
-                MessageBox.Show(
-                    "Tersedia FFmpeg " + check.Latest + " (terpasang " + check.Installed
-                    + ").\n\nFFmpeg ini dipasang lewat " + _tools.Source
-                    + ", bukan oleh aplikasi ini, jadi pembaruannya sebaiknya lewat "
-                    + "alat yang sama - misalnya:\n\n    winget upgrade Gyan.FFmpeg",
-                    AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Information);
+                var answer = MessageBox.Show(
+                    "Tersedia FFmpeg " + check.Latest + " (terpasang "
+                    + check.Installed + ").\n\n"
+                    + "FFmpeg yang sekarang dipasang lewat " + _tools.Source
+                    + ", bukan oleh aplikasi ini.\n\n"
+                    + "Ya\t= Unduh sendiri (±80 MB, menempati ±170 MB).\n"
+                    + "\t  Dipakai aplikasi ini saja; pemasangan "
+                    + _tools.Source + " Anda\n\t  tidak diubah sama sekali.\n\n"
+                    + "Tidak\t= Salin perintah \"winget upgrade Gyan.FFmpeg\"\n"
+                    + "\t  ke clipboard, biar diperbarui lewat alatnya sendiri.\n\n"
+                    + "Batal\t= Nanti saja",
+                    AppInfo.Name, MessageBoxButton.YesNoCancel,
+                    MessageBoxImage.Question);
+
+                if (answer == MessageBoxResult.Yes) UpdateFFmpeg();
+                else if (answer == MessageBoxResult.No) CopyUpgradeCommand();
                 return;
             }
 
@@ -440,6 +459,37 @@ namespace VideoMerger.App
                     MessageBoxButton.YesNo, MessageBoxImage.Question)
                 == MessageBoxResult.Yes)
                 UpdateFFmpeg();
+        }
+
+        /// <summary>
+        /// Perintah pembaruan untuk alat yang memasang FFmpeg ini, disalin ke
+        /// clipboard supaya tinggal ditempel di terminal.
+        /// </summary>
+        private void CopyUpgradeCommand()
+        {
+            string source = _tools != null ? _tools.Source : "";
+            string command;
+            if (source == "winget") command = "winget upgrade Gyan.FFmpeg";
+            else if (source == "terpasang di sistem")
+                command = "choco upgrade ffmpeg     atau    scoop update ffmpeg";
+            else command = "winget upgrade Gyan.FFmpeg";
+
+            try
+            {
+                Clipboard.SetText(command);
+                MessageBox.Show("Perintah berikut sudah disalin:\n\n    " + command
+                                + "\n\nTempel di Command Prompt atau PowerShell.",
+                                AppInfo.Name, MessageBoxButton.OK,
+                                MessageBoxImage.Information);
+            }
+            catch (Exception)
+            {
+                // Clipboard bisa sedang dikunci aplikasi lain; tampilkan saja
+                // perintahnya supaya tetap bisa disalin manual.
+                MessageBox.Show("Jalankan perintah berikut:\n\n    " + command,
+                                AppInfo.Name, MessageBoxButton.OK,
+                                MessageBoxImage.Information);
+            }
         }
 
         private void UpdateFFmpeg()

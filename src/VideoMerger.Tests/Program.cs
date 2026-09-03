@@ -937,6 +937,35 @@ namespace VideoMerger.Tests
             Check("FFmpeg di folder aplikasi dianggap milik aplikasi",
                   FFmpegUpdater.IsManagedByApp(own), own.FFmpeg);
 
+            // Inti dari cara aplikasi memperbarui FFmpeg milik alat lain:
+            // salinannya sendiri TIDAK menimpa apa pun, ia hanya diletakkan di
+            // folder yang dicari lebih dulu. Kalau urutan ini bergeser,
+            // pembaruan akan tampak berhasil lalu diam-diam tidak terpakai.
+            var order = FFmpegLocator.SearchOrder();
+            int mine = -1, winget = -1, system = -1;
+            for (int i = 0; i < order.Count; i++)
+            {
+                if (mine < 0 && order[i].Key == "unduhan aplikasi") mine = i;
+                if (winget < 0 && order[i].Key == "winget") winget = i;
+                if (system < 0 && order[i].Key == "terpasang di sistem") system = i;
+            }
+            Check("folder unduhan aplikasi ada di daftar pencarian", mine >= 0,
+                  mine.ToString());
+            Check("unduhan aplikasi dicari sebelum chocolatey/scoop",
+                  mine >= 0 && system > mine, "unduhan=" + mine + " sistem=" + system);
+            if (winget >= 0)
+                Check("unduhan aplikasi dicari sebelum winget", mine < winget,
+                      "unduhan=" + mine + " winget=" + winget);
+            else
+                Check("unduhan aplikasi dicari sebelum winget", true,
+                      "(winget tidak terpasang di mesin ini, dilewati)");
+
+            // Folder pilihan pengguna tetap paling diutamakan.
+            var manual = FFmpegLocator.SearchOrder(@"D:\ffmpeg");
+            Check("folder pilihan pengguna mengalahkan semuanya",
+                  manual.Count > 0 && manual[0].Key == "pengaturan",
+                  manual.Count > 0 ? manual[0].Key : "kosong");
+
             // Penjadwalan: mati kalau tidak diminta, hidup kalau belum pernah.
             var settings = new AppSettings();
             settings.Set("ffmpeg_auto_check", false);

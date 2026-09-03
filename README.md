@@ -16,7 +16,7 @@ Ada dua cara, keduanya sah:
 | Berkas | Untuk siapa |
 |---|---|
 | **`VideoMerger-1.1.0-Setup.exe`** — installer | Pemakaian biasa. Membuat pintasan Start Menu / Desktop, terdaftar di *Apps & features*, bisa dihapus rapi. Bisa dipasang **tanpa hak administrator** — pilih "Pasang hanya untuk saya". |
-| **`VideoMerger.exe`** — satu file 195 KB, tanpa pasang | Dijalankan dari flashdisk atau folder jaringan, atau di PC yang melarang pemasangan. Tinggal klik dua kali. |
+| **`VideoMerger.exe`** — satu file 213 KB, tanpa pasang | Dijalankan dari flashdisk atau folder jaringan, atau di PC yang melarang pemasangan. Tinggal klik dua kali. |
 
 Keduanya tersedia di [halaman Releases](../../releases). Installernya 2 MB.
 
@@ -110,12 +110,25 @@ Chip status FFmpeg di pojok kanan atas punya tombol **Periksa pembaruan**.
 Aplikasi juga memeriksa sendiri **sekali seminggu** saat dibuka — dibatasi
 supaya membuka aplikasi tidak berarti satu permintaan jaringan setiap kali.
 
-Aplikasi hanya **memperbarui FFmpeg yang dipasangnya sendiri** (di
-`%APPDATA%\vmerge\ffmpeg`). Kalau FFmpeg Anda datang dari winget, chocolatey,
-scoop, atau ditaruh sendiri di PATH, aplikasi hanya memberitahu ada versi baru
-dan menyarankan perintah yang tepat — misalnya `winget upgrade Gyan.FFmpeg`.
-Menimpanya berarti diam-diam mengambil alih pemasangan yang bukan dibuat
-aplikasi ini, dan pembaruan berikutnya dari alat aslinya akan bertabrakan.
+Kalau FFmpeg-nya **dipasang aplikasi ini**, pembaruannya langsung di tempat.
+
+Kalau datang dari **winget/chocolatey/scoop**, aplikasi menawarkan dua jalan:
+
+| Pilihan | Yang terjadi |
+|---|---|
+| **Unduh sendiri** | Versi baru dipasang di `%APPDATA%\vmerge\ffmpeg` dan langsung dipakai. Pemasangan winget Anda **tidak diubah sama sekali**. |
+| **Salin perintah** | `winget upgrade Gyan.FFmpeg` disalin ke clipboard, tinggal ditempel di terminal. |
+
+Yang tidak pernah dilakukan aplikasi adalah **menimpa berkas milik winget di
+tempatnya**. Nama folder winget bernomor versi (`ffmpeg-8.1.1-full_build`), jadi
+menimpanya membuat winget tetap mengira versi lama yang terpasang — dan
+`winget upgrade` berikutnya akan membatalkan pekerjaan itu.
+
+Memasang salinan sendiri aman karena urutan pencarian FFmpeg menaruh
+`%APPDATA%\vmerge\ffmpeg` **sebelum** winget/chocolatey/scoop, jadi versi baru
+langsung terpakai tanpa menyentuh apa pun milik alat lain. Urutan itu ada
+tesnya, karena kalau bergeser pembaruan akan tampak berhasil lalu diam-diam
+tidak terpakai.
 
 ---
 
@@ -328,10 +341,10 @@ Lalu:
 
 ```bat
 build.bat          REM bangun saja
-build.bat test     REM bangun lalu jalankan 115 tes
+build.bat test     REM bangun lalu jalankan 119 tes
 ```
 
-Hasilnya `dist\VideoMerger.exe`, **satu berkas 195 KB**.
+Hasilnya `dist\VideoMerger.exe`, **satu berkas 213 KB**.
 
 `VideoMerger.Core.dll` ditanam ke dalam exe sebagai *embedded resource* dan dimuat
 lewat `AssemblyResolve`, supaya menyalin exe-nya sendirian ke flashdisk tetap
@@ -346,7 +359,7 @@ di sini:
   pemuatannya terjadi sebelum `AssemblyResolve` sempat terpasang.
 
 FFmpeg sengaja **tidak** dibundel: `ffmpeg.exe` build lengkap berukuran 217 MB,
-sehingga aplikasi 195 KB akan membengkak jadi ratusan MB.
+sehingga aplikasi 213 KB akan membengkak jadi ratusan MB.
 
 ### Membuat installer
 
@@ -384,7 +397,7 @@ C:\uji\vm\unins000.exe /VERYSILENT
 dotnet run --project src\VideoMerger.Tests -c Release
 ```
 
-115 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
+119 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
 **membuktikan** kerusakannya nyata sebelum memeriksa bahwa aplikasi menolaknya.
 
 Tes hardsub-nya juga tidak percaya pada kode keluar: video sumbernya **hitam polos**,
@@ -421,7 +434,7 @@ src/
     Rows.cs                 pembungkus baris tabel (INotifyPropertyChanged)
     Cli.cs                  antarmuka baris perintah
     EmbeddedAssemblies.cs   memuat Core.dll dari dalam exe
-  VideoMerger.Tests/        115 tes, semuanya menjalankan FFmpeg sungguhan
+  VideoMerger.Tests/        119 tes, semuanya menjalankan FFmpeg sungguhan
 build.bat                   bangun exe
 build_installer.bat         bangun exe + installer
 installer/setup.iss         skrip Inno Setup

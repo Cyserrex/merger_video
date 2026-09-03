@@ -50,6 +50,21 @@ namespace VideoMerger.Core
         public const string DownloadUrl =
             "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
 
+        /// <summary>
+        /// Urutan folder yang dicari, dari yang paling diutamakan.
+        ///
+        /// Publik karena urutannya adalah PERILAKU, bukan detail: seluruh cara
+        /// aplikasi memperbarui FFmpeg bergantung pada salinannya sendiri
+        /// dicari lebih dulu daripada winget/chocolatey/scoop. Kalau urutan itu
+        /// bergeser, pembaruan akan tampak berhasil lalu diam-diam tidak
+        /// terpakai - jadi ada tesnya.
+        /// </summary>
+        public static IList<KeyValuePair<string, string>> SearchOrder(
+            string manualDir = "")
+        {
+            return new List<KeyValuePair<string, string>>(CandidateDirs(manualDir));
+        }
+
         private static IEnumerable<KeyValuePair<string, string>> CandidateDirs(
             string manualDir)
         {
@@ -81,7 +96,11 @@ namespace VideoMerger.Core
             string profile = Environment.GetFolderPath(
                 Environment.SpecialFolder.UserProfile);
 
-            Add("terpasang di sistem", Path.Combine(appdata, AppInfo.Id, "ffmpeg", "bin"));
+            // Salinan milik aplikasi sendiri, dan sengaja diletakkan SEBELUM
+            // winget/chocolatey/scoop: begitu aplikasi mengunduh versi yang
+            // lebih baru, versi itulah yang dipakai - tanpa pernah menyentuh
+            // pemasangan milik alat lain.
+            Add("unduhan aplikasi", Path.Combine(appdata, AppInfo.Id, "ffmpeg", "bin"));
             Add("terpasang di sistem", @"C:\ffmpeg\bin");
             Add("terpasang di sistem", Path.Combine(programFiles, "ffmpeg", "bin"));
             Add("terpasang di sistem", Path.Combine(profile, "scoop", "shims"));
