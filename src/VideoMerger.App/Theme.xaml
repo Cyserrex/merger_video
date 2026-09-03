@@ -1,25 +1,32 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
 
     <!--
-        Satu-satunya tempat warna disebut. Nilainya sama persis dengan palet
-        versi sebelumnya, supaya aplikasinya terasa sama walau kerangkanya
-        berganti total.
+        Satu-satunya tempat warna disebut.
+
+        Catatan kinerja: di seluruh berkas ini TIDAK ada DropShadowEffect,
+        gradasi, opacity mask, maupun animasi. Ketiganya yang membuat WPF
+        terasa berat di laptop tanpa akselerasi grafis (RenderCapability.Tier 0,
+        yang memaksa seluruh gambar dihitung CPU). Kedalaman dibuat dengan
+        garis tepi tipis dan beda warna latar - yang biayanya nol.
     -->
     <Color x:Key="BgColor">#EEF1F6</Color>
     <Color x:Key="CardColor">#FFFFFF</Color>
-    <Color x:Key="BorderColor">#D6DCE7</Color>
+    <Color x:Key="BorderColor">#DDE3EC</Color>
     <Color x:Key="TextColor">#1B2333</Color>
     <Color x:Key="MutedColor">#6B7480</Color>
     <Color x:Key="AccentColor">#2F6BE4</Color>
     <Color x:Key="AccentHoverColor">#2559C4</Color>
     <Color x:Key="AccentDimColor">#A8BFF0</Color>
+    <Color x:Key="AccentTintColor">#EEF3FD</Color>
     <Color x:Key="DangerColor">#C22B3E</Color>
     <Color x:Key="SuccessColor">#1B7F45</Color>
-    <Color x:Key="RowAltColor">#F7F9FC</Color>
-    <Color x:Key="SelectionColor">#D9E5FB</Color>
-    <Color x:Key="FieldBorderColor">#C2CBDA</Color>
-    <Color x:Key="TrackColor">#DFE5EF</Color>
+    <Color x:Key="WarnColor">#9A6400</Color>
+    <Color x:Key="RowAltColor">#F8FAFD</Color>
+    <Color x:Key="SelectionColor">#DCE8FB</Color>
+    <Color x:Key="FieldBorderColor">#C8D0DD</Color>
+    <Color x:Key="TrackColor">#E3E8F0</Color>
 
     <SolidColorBrush x:Key="Bg" Color="{StaticResource BgColor}"/>
     <SolidColorBrush x:Key="Card" Color="{StaticResource CardColor}"/>
@@ -29,21 +36,27 @@
     <SolidColorBrush x:Key="Accent" Color="{StaticResource AccentColor}"/>
     <SolidColorBrush x:Key="AccentHover" Color="{StaticResource AccentHoverColor}"/>
     <SolidColorBrush x:Key="AccentDim" Color="{StaticResource AccentDimColor}"/>
+    <SolidColorBrush x:Key="AccentTint" Color="{StaticResource AccentTintColor}"/>
     <SolidColorBrush x:Key="Danger" Color="{StaticResource DangerColor}"/>
     <SolidColorBrush x:Key="Success" Color="{StaticResource SuccessColor}"/>
+    <SolidColorBrush x:Key="Warn" Color="{StaticResource WarnColor}"/>
     <SolidColorBrush x:Key="RowAlt" Color="{StaticResource RowAltColor}"/>
     <SolidColorBrush x:Key="Selection" Color="{StaticResource SelectionColor}"/>
     <SolidColorBrush x:Key="FieldBorder" Color="{StaticResource FieldBorderColor}"/>
     <SolidColorBrush x:Key="Track" Color="{StaticResource TrackColor}"/>
-    <SolidColorBrush x:Key="Hover" Color="#EDF1F8"/>
-    <SolidColorBrush x:Key="ButtonFace" Color="#E7ECF4"/>
-    <SolidColorBrush x:Key="ButtonPressed" Color="#D2DAE8"/>
+    <SolidColorBrush x:Key="Hover" Color="#EEF2F8"/>
+    <SolidColorBrush x:Key="ButtonFace" Color="#F3F5F9"/>
+    <SolidColorBrush x:Key="ButtonPressed" Color="#DCE3ED"/>
     <SolidColorBrush x:Key="Disabled" Color="#A6AEBB"/>
 
+    <sys:Double x:Key="Radius">6</sys:Double>
+    <CornerRadius x:Key="CardRadius">10</CornerRadius>
+    <CornerRadius x:Key="FieldRadius">6</CornerRadius>
+
     <!--
-        Segoe UI Variable ikut Windows 11 dan itulah yang dipakai aplikasi
-        Windows modern; Segoe UI menutupi Windows 10 dan 8.1. Daftar cadangan
-        ini yang membuatnya menurun dengan rapi, bukan jatuh ke font bitmap.
+        Segoe UI Variable ikut Windows 11, Segoe UI menutupi Windows 7 sampai
+        10. Daftar cadangan ini yang membuatnya menurun rapi, bukan jatuh ke
+        font bitmap.
     -->
     <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI, Tahoma</FontFamily>
     <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Courier New</FontFamily>
@@ -59,21 +72,30 @@
         <Setter Property="FontSize" Value="12"/>
         <Setter Property="Foreground" Value="{StaticResource Muted}"/>
     </Style>
-    <Style x:Key="CardTitle" TargetType="TextBlock" BasedOn="{StaticResource Body}">
-        <Setter Property="FontSize" Value="14"/>
+    <!-- Label bagian: kecil, huruf kapital, renggang. Memberi struktur tanpa
+         menambah garis atau kotak yang bikin ramai. -->
+    <Style x:Key="SectionLabel" TargetType="TextBlock" BasedOn="{StaticResource Body}">
+        <Setter Property="FontSize" Value="11"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+        <Setter Property="TextBlock.LineHeight" Value="14"/>
     </Style>
     <Style x:Key="Head" TargetType="TextBlock" BasedOn="{StaticResource Body}">
         <Setter Property="FontSize" Value="19"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
+    <Style x:Key="Empty" TargetType="TextBlock" BasedOn="{StaticResource Body}">
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+        <Setter Property="TextAlignment" Value="Center"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+    </Style>
 
     <!-- ========================================================== tombol -->
     <!--
         Template penuh, bukan sekadar Setter: tombol bawaan WPF di .NET
-        Framework memakai tema Aero dengan gradasi dan tepi timbul, dan itu
-        satu-satunya hal paling ketinggalan zaman di kerangka ini. Gradasinya
-        tidak bisa dihapus lewat properti mana pun.
+        Framework memakai tema Aero dengan gradasi dan tepi timbul, dan
+        gradasinya tidak bisa dihilangkan lewat properti mana pun.
     -->
     <Style x:Key="Btn" TargetType="Button">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
@@ -87,7 +109,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" CornerRadius="5"
+                    <Border x:Name="Bd" CornerRadius="{StaticResource FieldRadius}"
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="1">
@@ -106,8 +128,13 @@
                             <Setter TargetName="Bd" Property="Background"
                                     Value="{StaticResource ButtonPressed}"/>
                         </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush"
+                                    Value="{StaticResource Accent}"/>
+                        </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Bd" Property="Background" Value="#F0F2F6"/>
+                            <Setter TargetName="Bd" Property="Background" Value="#F4F6F9"/>
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="#E4E8EF"/>
                             <Setter Property="Foreground" Value="{StaticResource Disabled}"/>
                             <Setter Property="Cursor" Value="Arrow"/>
                         </Trigger>
@@ -120,14 +147,13 @@
     <Style x:Key="BtnAccent" TargetType="Button" BasedOn="{StaticResource Btn}">
         <Setter Property="Background" Value="{StaticResource Accent}"/>
         <Setter Property="Foreground" Value="White"/>
-        <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
         <Setter Property="FontSize" Value="14"/>
-        <Setter Property="Padding" Value="26,11"/>
+        <Setter Property="Padding" Value="28,12"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" CornerRadius="6"
+                    <Border x:Name="Bd" CornerRadius="8"
                             Background="{TemplateBinding Background}">
                         <ContentPresenter HorizontalAlignment="Center"
                                           VerticalAlignment="Center"
@@ -153,15 +179,44 @@
     <Style x:Key="BtnDanger" TargetType="Button" BasedOn="{StaticResource Btn}">
         <Setter Property="Background" Value="{StaticResource Card}"/>
         <Setter Property="Foreground" Value="{StaticResource Danger}"/>
-        <Setter Property="BorderBrush" Value="#E3B3BA"/>
-        <Setter Property="Padding" Value="18,9"/>
+        <Setter Property="BorderBrush" Value="#E9BFC5"/>
+        <Setter Property="Padding" Value="20,10"/>
     </Style>
 
     <Style x:Key="BtnTool" TargetType="Button" BasedOn="{StaticResource Btn}">
         <Setter Property="Background" Value="{StaticResource Card}"/>
-        <Setter Property="Padding" Value="11,5"/>
+        <Setter Property="Padding" Value="12,6"/>
         <Setter Property="FontSize" Value="12"/>
-        <Setter Property="Margin" Value="0,0,4,0"/>
+        <Setter Property="Margin" Value="0,0,5,0"/>
+    </Style>
+
+    <!-- Tautan teks: dipakai untuk "Periksa pembaruan" dan sejenisnya. -->
+    <Style x:Key="BtnLink" TargetType="Button">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Padding" Value="6,2"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="Transparent" CornerRadius="4"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background"
+                                    Value="{StaticResource AccentTint}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource Disabled}"/>
+                            <Setter Property="Cursor" Value="Arrow"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ========================================================= masukan -->
@@ -172,12 +227,13 @@
         <Setter Property="Background" Value="White"/>
         <Setter Property="BorderBrush" Value="{StaticResource FieldBorder}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Padding" Value="7,6"/>
+        <Setter Property="Padding" Value="9,7"/>
+        <Setter Property="SelectionBrush" Value="{StaticResource Accent}"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
-                    <Border x:Name="Bd" CornerRadius="5"
+                    <Border x:Name="Bd" CornerRadius="{StaticResource FieldRadius}"
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}">
@@ -186,13 +242,57 @@
                                       VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush"
+                                    Value="{StaticResource AccentDim}"/>
+                        </Trigger>
                         <Trigger Property="IsKeyboardFocusWithin" Value="True">
                             <Setter TargetName="Bd" Property="BorderBrush"
                                     Value="{StaticResource Accent}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Bd" Property="Background" Value="#F3F5F9"/>
+                            <Setter TargetName="Bd" Property="Background" Value="#F4F6F9"/>
                             <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--
+        ComboBox ditulis ulang templatenya. Ini elemen paling ketinggalan zaman
+        yang tersisa: yang bawaan menggambar tombol panah bergradasi dengan
+        tepi timbul, dan tidak satu pun propertinya bisa menghilangkan itu.
+    -->
+    <Style x:Key="ComboToggle" TargetType="ToggleButton">
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="ClickMode" Value="Press"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Bd" Background="White"
+                            BorderBrush="{StaticResource FieldBorder}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource FieldRadius}">
+                        <Path x:Name="Arrow" HorizontalAlignment="Right"
+                              VerticalAlignment="Center" Margin="0,0,11,0"
+                              Data="M 0 0 L 4 4 L 8 0" Stroke="{StaticResource Muted}"
+                              StrokeThickness="1.4" StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round" SnapsToDevicePixels="True"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush"
+                                    Value="{StaticResource AccentDim}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush"
+                                    Value="{StaticResource Accent}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Background" Value="#F4F6F9"/>
+                            <Setter TargetName="Arrow" Property="Stroke" Value="#BFC6D2"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -205,54 +305,192 @@
         <Setter Property="FontSize" Value="13"/>
         <Setter Property="Foreground" Value="{StaticResource Text}"/>
         <Setter Property="Background" Value="White"/>
-        <Setter Property="BorderBrush" Value="{StaticResource FieldBorder}"/>
-        <Setter Property="Padding" Value="7,5"/>
-        <Setter Property="VerticalContentAlignment" Value="Center"/>
-        <Setter Property="Height" Value="30"/>
+        <Setter Property="Height" Value="34"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <ToggleButton x:Name="PART_Toggle"
+                                      Style="{StaticResource ComboToggle}"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay,
+                                                  RelativeSource={RelativeSource TemplatedParent}}"/>
+                        <ContentPresenter x:Name="PART_Content"
+                                          Margin="11,0,30,0"
+                                          VerticalAlignment="Center"
+                                          IsHitTestVisible="False"
+                                          Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"/>
+                        <Popup x:Name="PART_Popup" AllowsTransparency="True"
+                               Placement="Bottom" Focusable="False"
+                               PopupAnimation="None"
+                               IsOpen="{TemplateBinding IsDropDownOpen}">
+                            <Border Background="White"
+                                    BorderBrush="{StaticResource BorderBrushSoft}"
+                                    BorderThickness="1" CornerRadius="6"
+                                    Margin="0,3,0,0"
+                                    MinWidth="{TemplateBinding ActualWidth}"
+                                    MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                <ScrollViewer>
+                                    <ItemsPresenter/>
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
+    <Style x:Key="PickerItem" TargetType="ComboBoxItem">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Foreground" Value="{StaticResource Text}"/>
+        <Setter Property="Padding" Value="11,7"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                    <Border x:Name="Bd" Background="Transparent" CornerRadius="4"
+                            Margin="3,1" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Bd" Property="Background"
+                                    Value="{StaticResource AccentTint}"/>
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bd" Property="Background"
+                                    Value="{StaticResource Selection}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Kotak centang: kotak bawaan WPF kecil dan bergradasi. -->
     <Style x:Key="Tick" TargetType="CheckBox">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
         <Setter Property="FontSize" Value="13"/>
         <Setter Property="Foreground" Value="{StaticResource Text}"/>
-        <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <StackPanel Orientation="Horizontal" Background="Transparent">
+                        <Border x:Name="Box" Width="17" Height="17" CornerRadius="4"
+                                Background="White" BorderThickness="1"
+                                BorderBrush="{StaticResource FieldBorder}"
+                                VerticalAlignment="Center">
+                            <Path x:Name="Check" Data="M 0 3.5 L 3 6.5 L 8.5 1"
+                                  Stroke="White" StrokeThickness="2"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Visibility="Collapsed"/>
+                        </Border>
+                        <ContentPresenter x:Name="Label" Margin="8,0,0,0"
+                                          VerticalAlignment="Center"
+                                          RecognizesAccessKey="True"/>
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Box" Property="Background"
+                                    Value="{StaticResource Accent}"/>
+                            <Setter TargetName="Box" Property="BorderBrush"
+                                    Value="{StaticResource Accent}"/>
+                            <Setter TargetName="Check" Property="Visibility"
+                                    Value="Visible"/>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Box" Property="BorderBrush"
+                                    Value="{StaticResource Accent}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Box" Property="Background" Value="#F0F2F6"/>
+                            <Setter TargetName="Box" Property="BorderBrush" Value="#DDE2EA"/>
+                            <Setter Property="Foreground" Value="{StaticResource Disabled}"/>
+                            <Setter Property="Cursor" Value="Arrow"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ============================================================= tab -->
     <Style x:Key="Tabs" TargetType="TabControl">
         <Setter Property="Background" Value="{StaticResource Card}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}"/>
-        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Padding" Value="0"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabControl">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <!-- Garis tipis sepanjang lebar di bawah deretan tab.
+                             Indikator tab aktif duduk TEPAT di atasnya, jadi
+                             terbaca sebagai penanda tab - bukan sebagai garis
+                             bawah huruf, yang justru terjadi ketika
+                             indikatornya diletakkan di dalam padding teks. -->
+                        <Border Grid.Row="0" BorderThickness="0,0,0,1"
+                                BorderBrush="{StaticResource BorderBrushSoft}">
+                            <TabPanel IsItemsHost="True" Margin="6,0,0,0"
+                                      Panel.ZIndex="1"/>
+                        </Border>
+                        <Border Grid.Row="1" Background="{TemplateBinding Background}"
+                                BorderBrush="{StaticResource BorderBrushSoft}"
+                                BorderThickness="1,0,1,1"
+                                CornerRadius="0,0,10,10">
+                            <ContentPresenter ContentSource="SelectedContent"/>
+                        </Border>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <Style x:Key="Tab" TargetType="TabItem">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
-        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontSize" Value="13.5"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
         <Setter Property="Foreground" Value="{StaticResource Muted}"/>
         <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
+                    <!-- Padding ada di ContentPresenter, BUKAN di Border luar,
+                         supaya indikator di bawah bisa selebar tab penuh. -->
                     <Border x:Name="Bd" Background="Transparent"
-                            Padding="22,11" Margin="0,0,2,0"
-                            CornerRadius="6,6,0,0">
+                            CornerRadius="8,8,0,0" Margin="0,0,2,0">
                         <Grid>
                             <ContentPresenter ContentSource="Header"
+                                              Margin="20,12,20,13"
                                               HorizontalAlignment="Center"
                                               VerticalAlignment="Center"/>
-                            <Border x:Name="Underline" Height="3" VerticalAlignment="Bottom"
-                                    Background="Transparent" CornerRadius="2"
-                                    Margin="6,0,6,-1"/>
+                            <Border x:Name="Indicator" Height="3"
+                                    VerticalAlignment="Bottom"
+                                    Background="Transparent"
+                                    CornerRadius="2,2,0,0"/>
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Bd" Property="Background"
                                     Value="{StaticResource Card}"/>
-                            <Setter TargetName="Underline" Property="Background"
+                            <Setter TargetName="Indicator" Property="Background"
                                     Value="{StaticResource Accent}"/>
                             <Setter Property="Foreground" Value="{StaticResource Accent}"/>
                         </Trigger>
@@ -262,6 +500,7 @@
                                 <Condition Property="IsMouseOver" Value="True"/>
                             </MultiTrigger.Conditions>
                             <Setter Property="Foreground" Value="{StaticResource Text}"/>
+                            <Setter TargetName="Bd" Property="Background" Value="#F4F7FB"/>
                         </MultiTrigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -292,13 +531,11 @@
     </Style>
 
     <!-- ========================================================== tabel -->
-    <!--
-        DataGrid dipakai, bukan ListView: virtualisasinya berarti folder
-        berisi 500 video hanya membangun baris yang benar-benar terlihat.
-    -->
+    <!-- DataGrid, bukan ListView: virtualisasinya berarti folder berisi 500
+         video hanya membangun baris yang benar-benar terlihat. -->
     <Style x:Key="Grid" TargetType="DataGrid">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
-        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontSize" Value="12.5"/>
         <Setter Property="Foreground" Value="{StaticResource Text}"/>
         <Setter Property="Background" Value="{StaticResource Card}"/>
         <Setter Property="RowBackground" Value="{StaticResource Card}"/>
@@ -306,25 +543,31 @@
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="GridLinesVisibility" Value="None"/>
         <Setter Property="HeadersVisibility" Value="Column"/>
-        <Setter Property="RowHeight" Value="28"/>
+        <Setter Property="RowHeight" Value="30"/>
         <Setter Property="AutoGenerateColumns" Value="False"/>
         <Setter Property="CanUserAddRows" Value="False"/>
         <Setter Property="CanUserDeleteRows" Value="False"/>
         <Setter Property="CanUserResizeRows" Value="False"/>
         <Setter Property="SelectionMode" Value="Extended"/>
+        <Setter Property="IsReadOnly" Value="True"/>
         <Setter Property="EnableRowVirtualization" Value="True"/>
+        <Setter Property="EnableColumnVirtualization" Value="True"/>
         <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/>
         <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
+        <!-- Menggulir per piksel terasa jauh lebih halus daripada per baris,
+             dan tidak menambah biaya apa pun. -->
+        <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel"/>
     </Style>
 
     <Style x:Key="GridHeader" TargetType="DataGridColumnHeader">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
-        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontSize" Value="11.5"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
         <Setter Property="Foreground" Value="{StaticResource Muted}"/>
-        <Setter Property="Background" Value="#F2F5FA"/>
+        <Setter Property="Background" Value="#F4F7FB"/>
         <Setter Property="BorderThickness" Value="0,0,0,1"/>
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}"/>
-        <Setter Property="Padding" Value="8,8"/>
+        <Setter Property="Padding" Value="9,9"/>
         <Setter Property="HorizontalContentAlignment" Value="Left"/>
     </Style>
 
@@ -336,6 +579,9 @@
             <DataTrigger Binding="{Binding IsDimmed}" Value="True">
                 <Setter Property="Foreground" Value="{StaticResource Muted}"/>
             </DataTrigger>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource Hover}"/>
+            </Trigger>
             <Trigger Property="IsSelected" Value="True">
                 <Setter Property="Background" Value="{StaticResource Selection}"/>
                 <Setter Property="Foreground" Value="{StaticResource Text}"/>
@@ -345,7 +591,7 @@
 
     <Style x:Key="GridCell" TargetType="DataGridCell">
         <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Padding" Value="8,0"/>
+        <Setter Property="Padding" Value="9,0"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -356,6 +602,103 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- ====================================================== scrollbar -->
+    <!-- Ramping dan tanpa tombol panah; yang bawaan menambah dua tombol
+         bergradasi di tiap ujung. -->
+    <Style x:Key="ScrollThumb" TargetType="Thumb">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Border x:Name="Bd" Background="#C4CCD9" CornerRadius="4"
+                            Margin="3,2"/>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#A8B2C2"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="ScrollBar">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Width" Value="12"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                    <Grid Background="{TemplateBinding Background}">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource ScrollThumb}"/>
+                            </Track.Thumb>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Command="ScrollBar.PageDownCommand"
+                                              Opacity="0" Focusable="False"/>
+                            </Track.IncreaseRepeatButton>
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Command="ScrollBar.PageUpCommand"
+                                              Opacity="0" Focusable="False"/>
+                            </Track.DecreaseRepeatButton>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="Orientation" Value="Horizontal">
+                <Setter Property="Width" Value="Auto"/>
+                <Setter Property="Height" Value="12"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ScrollBar">
+                            <Grid Background="{TemplateBinding Background}">
+                                <Track x:Name="PART_Track" IsDirectionReversed="False">
+                                    <Track.Thumb>
+                                        <Thumb Style="{StaticResource ScrollThumb}"/>
+                                    </Track.Thumb>
+                                    <Track.IncreaseRepeatButton>
+                                        <RepeatButton Command="ScrollBar.PageRightCommand"
+                                                      Opacity="0" Focusable="False"/>
+                                    </Track.IncreaseRepeatButton>
+                                    <Track.DecreaseRepeatButton>
+                                        <RepeatButton Command="ScrollBar.PageLeftCommand"
+                                                      Opacity="0" Focusable="False"/>
+                                    </Track.DecreaseRepeatButton>
+                                </Track>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ========================================================== lain -->
+    <Style TargetType="Separator">
+        <Setter Property="Background" Value="{StaticResource BorderBrushSoft}"/>
+        <Setter Property="Height" Value="1"/>
+        <Setter Property="Margin" Value="0"/>
+    </Style>
+
+    <!-- Kartu: satu-satunya "kedalaman" yang dipakai. Garis tepi tipis di atas
+         latar abu, tanpa bayangan. -->
+    <Style x:Key="CardPanel" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource Card}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CardRadius}"/>
+    </Style>
+
+    <!-- Chip status kecil, mis. penanda FFmpeg di kepala jendela. -->
+    <Style x:Key="Chip" TargetType="Border">
+        <Setter Property="Background" Value="#F2F5FA"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="11"/>
+        <Setter Property="Padding" Value="10,4"/>
     </Style>
 
 </ResourceDictionary>

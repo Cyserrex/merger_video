@@ -44,6 +44,25 @@ namespace VideoMerger.Core
                 { "keep_log_lines", "500" },
                 { "active_tab", "0" },
 
+                // -- pembaruan FFmpeg ------------------------------------------
+                { "ffmpeg_auto_check", "true" },
+                { "ffmpeg_last_check", "" },
+
+                // -- pemilihan encoder otomatis --------------------------------
+                { "encoder_auto", "true" },
+                { "encoder_bench_fingerprint", "" },
+                { "encoder_bench_best", "" },
+                { "encoder_bench_detail", "" },
+
+                // -- kinerja ---------------------------------------------------
+                // Menjalankan ffmpeg di bawah prioritas normal nyaris tidak
+                // memperlambat proses yang berjalan sendirian, tetapi membuat
+                // perbedaan besar saat penggunanya tetap memakai laptopnya:
+                // tanpa ini seluruh mesin tersendat selama render.
+                { "background_priority", "true" },
+                // Animasi WPF dimatikan pada mesin tanpa akselerasi grafis.
+                { "reduce_effects", "auto" },
+
                 // -- hardsub -------------------------------------------------
                 { "hardsub_input_dir", "" },
                 { "hardsub_output_dir", "" },

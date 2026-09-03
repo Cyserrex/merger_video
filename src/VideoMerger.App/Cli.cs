@@ -29,6 +29,7 @@ namespace VideoMerger.App
             public bool Strict;
             public bool List;
             public bool NoFaststart;
+            public bool FullSpeed;
 
             public bool Hardsub;
             public string SubFile = "";
@@ -67,6 +68,7 @@ namespace VideoMerger.App
                     case "--strict": o.Strict = true; break;
                     case "--list": o.List = true; break;
                     case "--no-faststart": o.NoFaststart = true; break;
+                    case "--full-speed": o.FullSpeed = true; break;
                     case "--hardsub": o.Hardsub = true; break;
                     case "--sub-file": o.SubFile = next(); break;
                     case "--sub-track": int.TryParse(next(), out o.SubTrack); break;
@@ -84,6 +86,12 @@ namespace VideoMerger.App
             }
 
             if (string.IsNullOrEmpty(o.Input)) { PrintHelp(); return 2; }
+
+            // Bawaannya prioritas di bawah normal, sama seperti tampilan
+            // grafisnya: proses tak berpenjaga pun biasanya berjalan di
+            // komputer yang masih dipakai orang. --full-speed untuk mesin yang
+            // memang khusus merender.
+            Shell.BackgroundPriority = !o.FullSpeed;
 
             string source = Path.GetFullPath(o.Input);
             // Hardsub adalah satu-satunya mode yang wajar menunjuk satu berkas
@@ -498,6 +506,8 @@ namespace VideoMerger.App
             Console.WriteLine("      --strict         gagal kalau ada berkas dilewati");
             Console.WriteLine("      --list           tampilkan daftar saja");
             Console.WriteLine("      --no-faststart   jangan pindahkan indeks MP4 ke depan");
+            Console.WriteLine("      --full-speed     pakai prioritas normal (bawaan: di bawah");
+            Console.WriteLine("                       normal, supaya komputer tetap bisa dipakai)");
             Console.WriteLine();
             Console.WriteLine("Subtitle permanen (hardsub):");
             Console.WriteLine("      --hardsub        bakar subtitle, bukan menggabungkan");

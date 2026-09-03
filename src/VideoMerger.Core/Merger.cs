@@ -844,9 +844,24 @@ namespace VideoMerger.Core
 
         private List<string> VideoEncoderFlags(TargetSpec target)
         {
-            var inv = CultureInfo.InvariantCulture;
             string encoder = !string.IsNullOrEmpty(Job.HwaccelEncoder)
                 ? Job.HwaccelEncoder : target.VEncoder;
+            return EncoderFlagsFor(encoder, target);
+        }
+
+        /// <summary>
+        /// Bendera encoder untuk satu encoder dan satu target.
+        ///
+        /// Publik dan statis supaya benchmark encoder bisa memakai bendera yang
+        /// SAMA PERSIS dengan yang dipakai saat bekerja. Mengukur kecepatan
+        /// dengan setelan lain memberi angka yang benar untuk pertanyaan yang
+        /// salah: preset dan mode rate control sangat menentukan hasilnya.
+        /// </summary>
+        public static List<string> EncoderFlagsFor(string encoder, TargetSpec target)
+        {
+            var inv = CultureInfo.InvariantCulture;
+            target = target ?? new TargetSpec();
+            if (string.IsNullOrEmpty(encoder)) encoder = target.VEncoder;
 
             if (encoder == "h264_nvenc" || encoder == "hevc_nvenc")
             {
@@ -1023,6 +1038,7 @@ namespace VideoMerger.Core
         {
             string parent = Path.GetDirectoryName(Path.GetFullPath(outPath));
             if (string.IsNullOrEmpty(parent)) parent = ".";
+            SweepStaleTemp(parent);
             string path = Path.Combine(parent, ".vmerge_tmp_"
                 + Process.GetCurrentProcess().Id + "_"
                 + GetHashCode().ToString("x"));
@@ -1038,6 +1054,60 @@ namespace VideoMerger.Core
                     + "Pilih folder lain (mis. Documents atau drive D:).");
             }
             return path;
+        }
+
+        /// <summary>
+        /// Buang folder kerja milik proses yang sudah tidak hidup.
+        ///
+        /// Jalur normal - selesai, gagal, dibatalkan, jendela ditutup - selalu
+        /// membersihkan miliknya sendiri. Yang tidak bisa ditangani dari dalam
+        /// adalah proses yang mati mendadak: dimatikan lewat Task Manager,
+        /// listrik padam, Windows restart paksa. Sisanya bisa puluhan GB klip
+        /// ternormalisasi yang diam di folder tujuan selamanya, dan pengguna
+        /// tidak punya cara tahu itu apa.
+        ///
+        /// Nama foldernya memuat PID pembuatnya, jadi "masih dipakai atau
+        /// tidak" bisa dijawab: PID yang tidak lagi ada berarti aman dihapus.
+        /// PID yang masih hidup dilewati - bisa jadi itu jendela kedua yang
+        /// sedang bekerja di folder yang sama.
+        /// </summary>
+        public static void SweepStaleTemp(string folder)
+        {
+            string[] entries;
+            try { entries = Directory.GetDirectories(folder, ".vmerge_tmp_*"); }
+            catch (Exception) { return; }
+
+            foreach (string entry in entries)
+            {
+                string name = Path.GetFileName(entry);
+                string[] bits = name.Split('_');
+                int pid;
+                // ".vmerge", "tmp", "<pid>", "<id>"
+                if (bits.Length < 4
+                    || !int.TryParse(bits[2], NumberStyles.Integer,
+                                     CultureInfo.InvariantCulture, out pid))
+                    continue;
+                if (IsAlive(pid)) continue;
+                try { Directory.Delete(entry, true); } catch (Exception) { }
+            }
+        }
+
+        private static bool IsAlive(int pid)
+        {
+            try
+            {
+                using (Process.GetProcessById(pid)) return true;
+            }
+            catch (ArgumentException)
+            {
+                return false;      // tidak ada proses dengan PID itu
+            }
+            catch (Exception)
+            {
+                // Tidak boleh diakses karena hak akses: anggap masih hidup
+                // daripada menghapus folder yang mungkin sedang dipakai.
+                return true;
+            }
         }
 
         private void CleanupTemp()

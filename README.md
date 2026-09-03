@@ -5,7 +5,7 @@ diurutkan berdasarkan nama file atau tanggal.
 
 Dibuat untuk kasus seperti: 100 file rekaman CCTV masing-masing 5 menit → satu video 8 jam.
 
-![ikon](assets/vmerge.png)
+![Tab Gabungkan Video](docs/tampilan-gabung.png)
 
 ---
 
@@ -78,6 +78,8 @@ langsung ke dalam gambarnya, sehingga jadi bagian dari video dan tampil di mana 
    dan garis tepi. Tanpa ini, berkas `.ass` mempertahankan gayanya sendiri.
 5. Klik **BAKAR SUBTITLE**.
 
+![Tab Subtitle Permanen](docs/tampilan-hardsub.png)
+
 > **Hardsub selalu meng-encode ulang gambar** — pikselnya berubah, jadi tidak ada
 > jalan cepat seperti pada penggabungan. Audionya disalin apa adanya (tidak
 > di-encode ulang), sehingga tidak ada penurunan kualitas suara dan prosesnya lebih
@@ -101,6 +103,19 @@ memuat baris berbahasa asing, jadi membakarnya menghasilkan video yang hampir ta
   yang menempati ±170 MB di `%APPDATA%\vmerge`).
   Bisa juga dipasang manual: `winget install Gyan.FFmpeg`, atau taruh `ffmpeg.exe`
   dan `ffprobe.exe` di folder yang sama dengan `VideoMerger.exe`.
+
+### Memperbarui FFmpeg
+
+Chip status FFmpeg di pojok kanan atas punya tombol **Periksa pembaruan**.
+Aplikasi juga memeriksa sendiri **sekali seminggu** saat dibuka — dibatasi
+supaya membuka aplikasi tidak berarti satu permintaan jaringan setiap kali.
+
+Aplikasi hanya **memperbarui FFmpeg yang dipasangnya sendiri** (di
+`%APPDATA%\vmerge\ffmpeg`). Kalau FFmpeg Anda datang dari winget, chocolatey,
+scoop, atau ditaruh sendiri di PATH, aplikasi hanya memberitahu ada versi baru
+dan menyarankan perintah yang tepat — misalnya `winget upgrade Gyan.FFmpeg`.
+Menimpanya berarti diam-diam mengambil alih pemasangan yang bukan dibuat
+aplikasi ini, dan pembaruan berikutnya dari alat aslinya akan bertabrakan.
 
 ---
 
@@ -138,8 +153,59 @@ Perkiraan waktu untuk 100 video @5 menit (total 8 jam), diukur di i5-10300H:
 - Encode ulang dengan CPU (libx264): sekitar **1–2 jam**
 - Encode ulang dengan GPU NVIDIA (NVENC): sekitar **25–50 menit**
 
-Kalau kartu grafis mendukung, pilih encoder perangkat keras di kolom **Encoder**.
-Aplikasi hanya menampilkan encoder yang benar-benar tersedia di FFmpeg Anda.
+### Encoder dipilih dengan diukur, bukan ditebak
+
+Kolom **Encoder** bawaannya **Otomatis**, dan pilihannya ditentukan dengan
+benar-benar menjalankan setiap encoder sebentar (720p, 150 frame) lalu
+membandingkan fps-nya. Hasilnya disimpan, jadi pengukuran ini hanya terjadi
+sekali — dan terulang kalau kartu grafis, driver, atau versi FFmpeg berubah.
+
+Ini bukan kehati-hatian berlebihan. Hasil nyata di satu mesin uji
+(Core i7 8 core + GTX 1650 + Intel UHD):
+
+| Encoder | Kecepatan |
+|---|---|
+| NVIDIA NVENC (H.265) | 389 fps |
+| **CPU (libx264)** | **318 fps** |
+| NVIDIA NVENC (H.264) | 307 fps |
+| Intel QuickSync (H.264) | 114 fps |
+| AMD AMF | tidak jalan (tidak ada GPU AMD) |
+
+Dua hal yang akan salah kalau ditebak: **QuickSync 2,8× lebih lambat daripada
+CPU**, dan **NVENC H.264 pun kalah tipis**. Aturan "pakai perangkat keras kalau
+ada" justru memperlambat di mesin ini.
+
+> **H.265 tidak pernah dipilih otomatis** walaupun paling cepat, karena memilihnya
+> diam-diam mengubah codec keluaran jadi HEVC — dan HEVC persis yang tidak bisa
+> diputar TV lama, pemutar DVD, dan perangkat USB yang jadi alasan aplikasi ini
+> ada. Pilihannya tetap tersedia untuk yang memang menginginkannya.
+
+`ffmpeg -encoders` hanya menyebut apa yang ikut dikompilasi, bukan apa yang bisa
+dijalankan mesin ini: `h264_amf` tetap terdaftar di komputer tanpa GPU AMD dan
+baru mati di frame pertama. Klik **Uji ulang** untuk mengukur lagi kapan saja.
+
+### Sisa folder kerja dibersihkan sendiri
+
+Jalur normal — selesai, gagal, dibatalkan, jendela ditutup — selalu membuang
+folder kerjanya. Yang tidak bisa ditangani dari dalam adalah proses yang mati
+mendadak: dimatikan lewat Task Manager, listrik padam, Windows restart paksa.
+Sisanya bisa **puluhan GB** klip ternormalisasi yang diam di folder tujuan.
+
+Karena nama foldernya memuat PID pembuatnya, aplikasi bisa menjawab "masih
+dipakai atau tidak": sebelum memulai pekerjaan baru, folder `.vmerge_tmp_*`
+yang PID-nya sudah tidak hidup dihapus. Yang PID-nya masih hidup tidak
+disentuh — bisa jadi itu jendela kedua yang sedang bekerja di folder yang sama.
+
+### Supaya laptop tetap bisa dipakai
+
+Centang **"Jangan bikin komputer lemot selama proses"** (aktif secara bawaan)
+menjalankan FFmpeg pada prioritas di bawah normal. Prosesnya sendiri nyaris
+tidak melambat — ia tetap memakai seluruh CPU yang menganggur — tetapi komputernya
+tetap bisa dipakai mengetik dan membuka browser selama render berjam-jam.
+
+Tampilannya sendiri sengaja dibuat murah: tidak ada bayangan, gradasi, maupun
+animasi di seluruh berkas tema. Ketiganya yang membuat WPF terasa berat di
+laptop tanpa akselerasi grafis, karena seluruh gambarnya jatuh ke CPU.
 
 ---
 
@@ -213,6 +279,7 @@ VideoMerger.exe -i "D:\CCTV\Januari" -o "D:\hasil.mp4" --strict
 | `--encoder` | mis. `h264_nvenc`, `h264_qsv`, `h264_amf` |
 | `--strict` | berhenti dengan kode galat 5 kalau ada file yang dilewati (berguna untuk Task Scheduler, supaya 97 dari 100 rekaman tidak diam-diam dianggap sukses) |
 | `--list` | hanya tampilkan daftar |
+| `--full-speed` | pakai prioritas normal. Bawaannya di bawah normal supaya komputer tetap bisa dipakai selama render — pakai ini di mesin yang memang khusus merender |
 
 ### Hardsub dari baris perintah
 
@@ -261,7 +328,7 @@ Lalu:
 
 ```bat
 build.bat          REM bangun saja
-build.bat test     REM bangun lalu jalankan 87 tes
+build.bat test     REM bangun lalu jalankan 115 tes
 ```
 
 Hasilnya `dist\VideoMerger.exe`, **satu berkas 195 KB**.
@@ -317,7 +384,7 @@ C:\uji\vm\unins000.exe /VERYSILENT
 dotnet run --project src\VideoMerger.Tests -c Release
 ```
 
-87 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
+115 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
 **membuktikan** kerusakannya nyata sebelum memeriksa bahwa aplikasi menolaknya.
 
 Tes hardsub-nya juga tidak percaya pada kode keluar: video sumbernya **hitam polos**,
@@ -340,10 +407,13 @@ src/
     Prober.cs               pembacaan ffprobe paralel
     Scanner.cs              memindai folder
     Sorting.cs              urutan alami (StrCmpLogicalW) + parser tanggal
+    Hardware.cs             nama CPU/GPU + sidik jari untuk cache benchmark
+    EncoderBenchmark.cs     mengukur encoder mana yang tercepat di mesin ini
+    FFmpegUpdater.cs        periksa & pasang FFmpeg versi baru
     Merger.cs               menyusun perintah penggabungan
     Subtitles.cs            menemukan & menyiapkan subtitle
     Hardsubber.cs           mesin subtitle permanen
-    AppSettings.cs          preferensi di %APPDATA%merge\settings.ini
+    AppSettings.cs          preferensi di %APPDATA%\vmerge\settings.ini
   VideoMerger.App/          WPF
     Program.cs              titik masuk: GUI atau CLI
     Theme.xaml              palet & gaya (satu-satunya tempat warna)
@@ -351,7 +421,7 @@ src/
     Rows.cs                 pembungkus baris tabel (INotifyPropertyChanged)
     Cli.cs                  antarmuka baris perintah
     EmbeddedAssemblies.cs   memuat Core.dll dari dalam exe
-  VideoMerger.Tests/        87 tes, semuanya menjalankan FFmpeg sungguhan
+  VideoMerger.Tests/        115 tes, semuanya menjalankan FFmpeg sungguhan
 build.bat                   bangun exe
 build_installer.bat         bangun exe + installer
 installer/setup.iss         skrip Inno Setup

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using VideoMerger.Core;
@@ -38,6 +39,8 @@ namespace VideoMerger.Tests
                 new KeyValuePair<string, Action>("keluaran bersih", TestCleanOutput),
                 new KeyValuePair<string, Action>("hardsub", TestHardsub),
                 new KeyValuePair<string, Action>("pengaturan", TestSettings),
+                new KeyValuePair<string, Action>("encoder", TestEncoderSelection),
+                new KeyValuePair<string, Action>("pembaruan", TestUpdateCheck),
             };
 
             try
@@ -364,6 +367,24 @@ namespace VideoMerger.Tests
             Check("penanda log 'impossible to open' dikenali",
                   Array.IndexOf(FFmpegTask.FatalLogMarkers, "impossible to open") >= 0,
                   "");
+
+            // -- sisa folder kerja dari proses yang mati mendadak -------------
+            // Proses yang dibunuh Task Manager atau mati karena listrik padam
+            // tidak sempat membersihkan dirinya, dan sisanya bisa puluhan GB.
+            string sweep = Path.Combine(folder, "sapu");
+            Directory.CreateDirectory(sweep);
+            string dead = Path.Combine(sweep, ".vmerge_tmp_999999_deadbeef");
+            string mine = Path.Combine(sweep,
+                ".vmerge_tmp_" + Process.GetCurrentProcess().Id + "_live");
+            Directory.CreateDirectory(dead);
+            Directory.CreateDirectory(mine);
+            File.WriteAllText(Path.Combine(dead, "sisa.mkv"), "x");
+
+            Merger.SweepStaleTemp(sweep);
+            Check("folder kerja milik proses mati dihapus",
+                  !Directory.Exists(dead), dead);
+            Check("folder kerja proses yang masih hidup TIDAK disentuh",
+                  Directory.Exists(mine), mine);
         }
 
         // ====================================================== [5] toleransi
@@ -783,6 +804,158 @@ namespace VideoMerger.Tests
                   new AppSettingsProbe("ya").Value, "");
             Check("bool menolak sampah",
                   !new AppSettingsProbe("mungkin").Value, "");
+        }
+
+        // ============================================ [12] encoder & update
+        private static void TestEncoderSelection()
+        {
+            Console.WriteLine("\n[12] Pemilihan encoder otomatis");
+
+            var listed = EncoderBenchmark.Listed(Tools);
+            Check("daftar encoder terbaca dari FFmpeg", listed.Count > 0,
+                  listed.Count.ToString());
+
+            bool hasCpu = false;
+            foreach (var c in listed) if (c.Id == "libx264") hasCpu = true;
+            Check("libx264 ada sebagai patokan", hasCpu, "");
+
+            // Bendera yang dipakai benchmark HARUS sama dengan yang dipakai
+            // saat bekerja - kalau tidak, angkanya benar untuk pertanyaan yang
+            // salah.
+            var flags = Merger.EncoderFlagsFor("libx264",
+                                               new TargetSpec { Preset = "veryfast" });
+            Check("bendera encoder memuat preset produksi",
+                  flags.Contains("veryfast"), string.Join(" ", flags));
+
+            var nvenc = Merger.EncoderFlagsFor("h264_nvenc", new TargetSpec { Crf = 23 });
+            Check("NVENC pakai -cq, bukan -crf",
+                  nvenc.Contains("-cq") && !nvenc.Contains("-crf"),
+                  string.Join(" ", nvenc));
+            Check("offset cq NVENC = crf + 5",
+                  nvenc[nvenc.IndexOf("-cq") + 1] == "28",
+                  nvenc[nvenc.IndexOf("-cq") + 1]);
+
+            // Pengukuran sungguhan. libx264 pasti jalan, jadi hasilnya harus
+            // punya minimal satu yang bekerja dengan fps di atas nol.
+            var scores = EncoderBenchmark.Measure(Tools);
+            Check("pengukuran menghasilkan angka", scores.Count > 0,
+                  scores.Count.ToString());
+
+            bool anyWorks = false;
+            double bestFps = 0;
+            foreach (var score in scores)
+            {
+                if (!score.Works) continue;
+                anyWorks = true;
+                if (score.Fps > bestFps) bestFps = score.Fps;
+            }
+            Check("minimal satu encoder benar-benar jalan", anyWorks, "");
+            Check("fps terukur masuk akal (> 1)", bestFps > 1,
+                  bestFps.ToString("0.0", CultureInfo.InvariantCulture));
+
+            // Best() harus memilih yang tercepat, dan menerjemahkan libx264
+            // jadi "" karena itu memang nilai bawaan aplikasi.
+            var fake = new List<EncoderScore>
+            {
+                new EncoderScore { Candidate = EncoderBenchmark.Candidates[4],
+                                   Works = true, Fps = 50 },   // libx264
+                new EncoderScore { Candidate = EncoderBenchmark.Candidates[0],
+                                   Works = true, Fps = 300 },  // nvenc
+            };
+            Check("yang tercepat yang dipilih",
+                  EncoderBenchmark.Best(fake) == "h264_nvenc",
+                  EncoderBenchmark.Best(fake));
+
+            var cpuOnly = new List<EncoderScore>
+            {
+                new EncoderScore { Candidate = EncoderBenchmark.Candidates[4],
+                                   Works = true, Fps = 50 },
+                new EncoderScore { Candidate = EncoderBenchmark.Candidates[0],
+                                   Works = false, Fps = 0 },
+            };
+            Check("encoder yang tidak jalan tidak pernah dipilih",
+                  EncoderBenchmark.Best(cpuOnly) == "", EncoderBenchmark.Best(cpuOnly));
+
+            // H.265 sering paling cepat, tetapi memilihnya diam-diam mengubah
+            // codec keluaran jadi HEVC - persis yang tidak bisa diputar TV lama
+            // dan pemutar DVD yang jadi alasan aplikasi ini ada.
+            var hevcFastest = new List<EncoderScore>
+            {
+                new EncoderScore { Candidate = EncoderBenchmark.Candidates[1],
+                                   Works = true, Fps = 400 },  // hevc_nvenc
+                new EncoderScore { Candidate = EncoderBenchmark.Candidates[4],
+                                   Works = true, Fps = 318 },  // libx264
+            };
+            Check("H.265 tidak pernah dipilih otomatis walau paling cepat",
+                  EncoderBenchmark.Best(hevcFastest) == "",
+                  EncoderBenchmark.Best(hevcFastest));
+            Check("H.265 tetap ada di daftar untuk dipilih manual",
+                  !EncoderBenchmark.Candidates[1].AutoSelectable
+                  && EncoderBenchmark.Candidates[1].Codec == "hevc", "");
+
+            // Cache hanya sah untuk sidik jari yang sama.
+            var settings = new AppSettings();
+            EncoderBenchmark.StoreCache(settings, Tools, scores);
+            string best, detail;
+            Check("hasil tersimpan terbaca kembali",
+                  EncoderBenchmark.TryCached(settings, Tools, out best, out detail), "");
+            settings.Set("encoder_bench_fingerprint", "perangkat-lain");
+            Check("sidik jari berbeda membatalkan cache",
+                  !EncoderBenchmark.TryCached(settings, Tools, out best, out detail), "");
+        }
+
+        private static void TestUpdateCheck()
+        {
+            Console.WriteLine("\n[13] Pemeriksaan pembaruan FFmpeg");
+
+            // Versi terpasang SELALU membawa akhiran build, versi di server
+            // tidak. Membandingkannya sebagai teks membuat setiap pemeriksaan
+            // melaporkan "ada versi baru" selamanya.
+            Check("akhiran build diabaikan saat membandingkan",
+                  FFmpegUpdater.CompareVersions("8.1.1-full_build-www.gyan.dev",
+                                                "8.1.1") == 0, "");
+            Check("versi lebih lama terdeteksi",
+                  FFmpegUpdater.CompareVersions("7.1", "8.1.1") < 0, "");
+            Check("versi lebih baru terdeteksi",
+                  FFmpegUpdater.CompareVersions("8.2", "8.1.1") > 0, "");
+            Check("jumlah ruas berbeda dibandingkan benar",
+                  FFmpegUpdater.CompareVersions("8.1", "8.1.0") == 0, "");
+            Check("ruas bergaya git (6.1n) terbaca",
+                  FFmpegUpdater.CompareVersions("6.1n", "6.1") == 0, "");
+
+            // FFmpeg dari winget/PATH bukan milik aplikasi, jadi tidak boleh
+            // ditimpa - pembaruan berikutnya dari alat aslinya akan bertabrakan.
+            Check("FFmpeg dari luar tidak dianggap milik aplikasi",
+                  !FFmpegUpdater.IsManagedByApp(Tools),
+                  Tools.Source + " -> " + Tools.FFmpeg);
+
+            var own = new FFmpegTools
+            {
+                FFmpeg = Path.Combine(FFmpegLocator.InstallDir(), "bin", "ffmpeg.exe"),
+                FFprobe = Path.Combine(FFmpegLocator.InstallDir(), "bin", "ffprobe.exe"),
+            };
+            Check("FFmpeg di folder aplikasi dianggap milik aplikasi",
+                  FFmpegUpdater.IsManagedByApp(own), own.FFmpeg);
+
+            // Penjadwalan: mati kalau tidak diminta, hidup kalau belum pernah.
+            var settings = new AppSettings();
+            settings.Set("ffmpeg_auto_check", false);
+            Check("pemeriksaan otomatis bisa dimatikan",
+                  !FFmpegUpdater.DueForCheck(settings), "");
+            settings.Set("ffmpeg_auto_check", true);
+            Check("belum pernah diperiksa berarti waktunya memeriksa",
+                  FFmpegUpdater.DueForCheck(settings), "");
+            FFmpegUpdater.MarkChecked(settings);
+            Check("baru diperiksa berarti belum waktunya lagi",
+                  !FFmpegUpdater.DueForCheck(settings), settings["ffmpeg_last_check"]);
+
+            // Sidik jari perangkat keras harus berubah kalau FFmpeg-nya berubah.
+            var other = new FFmpegTools { FFmpeg = Tools.FFmpeg, FFprobe = Tools.FFprobe,
+                                          Version = "0.0.0" };
+            Check("sidik jari ikut versi FFmpeg",
+                  Hardware.Fingerprint(Tools) != Hardware.Fingerprint(other), "");
+            Check("sidik jari stabil untuk masukan sama",
+                  Hardware.Fingerprint(Tools) == Hardware.Fingerprint(Tools), "");
         }
 
         private class AppSettingsProbe

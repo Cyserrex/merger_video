@@ -13,6 +13,7 @@
         <Style TargetType="TextBox" BasedOn="{StaticResource Field}"/>
         <Style TargetType="ComboBox" BasedOn="{StaticResource Picker}"/>
         <Style TargetType="CheckBox" BasedOn="{StaticResource Tick}"/>
+        <Style TargetType="ComboBoxItem" BasedOn="{StaticResource PickerItem}"/>
         <Style TargetType="DataGrid" BasedOn="{StaticResource Grid}">
             <Setter Property="ColumnHeaderStyle" Value="{StaticResource GridHeader}"/>
             <Setter Property="RowStyle" Value="{StaticResource GridRow}"/>
@@ -36,9 +37,26 @@
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Video Merger" Style="{StaticResource Head}"/>
             <TextBlock Grid.Column="1" x:Name="LblVersion" Text="  v1.1.0"
-                       Style="{StaticResource Hint}" Margin="0,5,0,0"/>
-            <TextBlock Grid.Column="2" x:Name="LblFFmpeg" Text="Mencari FFmpeg..."
-                       Style="{StaticResource Hint}" Margin="0,5,0,0"/>
+                       Style="{StaticResource Hint}" Margin="0,7,0,0"/>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal"
+                        VerticalAlignment="Center">
+                <TextBlock x:Name="LblHardware" Style="{StaticResource Hint}"
+                           Margin="0,0,10,0" Text="" MaxWidth="330"
+                           TextTrimming="CharacterEllipsis"/>
+                <Border Style="{StaticResource Chip}">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse x:Name="DotFFmpeg" Width="8" Height="8"
+                                 Fill="{StaticResource Muted}"
+                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
+                        <TextBlock x:Name="LblFFmpeg" Style="{StaticResource Hint}"
+                                   Text="Mencari FFmpeg..."/>
+                    </StackPanel>
+                </Border>
+                <Button x:Name="BtnFFmpegUpdate" Style="{StaticResource BtnLink}"
+                        Content="Periksa pembaruan" Margin="6,0,0,0"
+                        Click="OnCheckFFmpegUpdate"/>
+            </StackPanel>
         </Grid>
 
         <!-- ==================================================== tab -->
@@ -49,6 +67,7 @@
             <TabItem Header="Gabungkan Video" Style="{StaticResource Tab}">
                 <Grid Margin="16,14,16,14">
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
@@ -74,10 +93,9 @@
                     <CheckBox Grid.Row="1" x:Name="ChkRecursive" Content="Termasuk subfolder"
                               Margin="0,9,0,0" Click="OnRescan"/>
 
-                    <Separator Grid.Row="2" Margin="0,12,0,0"
-                               Background="{StaticResource BorderBrushSoft}"/>
+                    <Separator Grid.Row="2" Margin="0,14,0,0"/>
 
-                    <DockPanel Grid.Row="2" Margin="0,20,0,8" VerticalAlignment="Bottom">
+                    <DockPanel Grid.Row="3" Margin="0,12,0,8">
                         <TextBlock DockPanel.Dock="Left" Text="Urutkan" Margin="0,0,8,0"/>
                         <ComboBox DockPanel.Dock="Left" x:Name="CmbSort" Width="215"
                                   SelectionChanged="OnSortChanged"/>
@@ -94,10 +112,15 @@
                         <Button DockPanel.Dock="Left" Content="Lepas Semua"
                                 Style="{StaticResource BtnTool}" Click="OnUncheckAll"/>
                         <TextBlock x:Name="LblSummary" Style="{StaticResource Hint}"
-                                   HorizontalAlignment="Right" TextAlignment="Right"/>
+                                   HorizontalAlignment="Right" TextAlignment="Right"
+                                   TextTrimming="CharacterEllipsis" MinWidth="60"/>
                     </DockPanel>
 
-                    <DataGrid Grid.Row="3" x:Name="GridFiles" MinHeight="120"
+                    <TextBlock Grid.Row="4" x:Name="LblEmptyFiles"
+                               Style="{StaticResource Empty}"
+                               VerticalAlignment="Center" Panel.ZIndex="1"
+                               Text="Belum ada video.&#10;Klik &quot;Pilih Folder&quot; untuk memulai."/>
+                    <DataGrid Grid.Row="4" x:Name="GridFiles" MinHeight="120"
                               MouseDoubleClick="OnFileDoubleClick"
                               PreviewKeyDown="OnGridKeyDown">
                         <DataGrid.Columns>
@@ -131,8 +154,9 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Grid Grid.Row="4" Margin="0,14,0,0">
+                    <Grid Grid.Row="5" Margin="0,14,0,0">
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
@@ -147,14 +171,27 @@
                             <Button Grid.Column="2" Content="Simpan Ke" Margin="8,0,0,0"
                                     Click="OnChooseOutput"/>
                         </Grid>
-                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
                             <TextBlock Text="Metode" Margin="0,0,8,0"/>
                             <ComboBox x:Name="CmbMode" Width="215"
                                       SelectionChanged="OnModeChanged"/>
                             <TextBlock Text="Kualitas (CRF)" Margin="18,0,8,0"/>
-                            <TextBox x:Name="TxtCrf" Width="46" Text="23"/>
+                            <TextBox x:Name="TxtCrf" Width="58" Text="23"/>
                             <TextBlock Text="Encoder" Margin="18,0,8,0"/>
-                            <ComboBox x:Name="CmbEncoder" Width="205"/>
+                            <ComboBox x:Name="CmbEncoder" Width="250"
+                                      SelectionChanged="OnEncoderChanged"/>
+                            <Button x:Name="BtnBenchmark" Style="{StaticResource BtnLink}"
+                                    Content="Uji ulang" Margin="4,0,0,0"
+                                    Click="OnRunBenchmark"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
+                            <CheckBox x:Name="ChkBackgroundPriority"
+                                      Content="Jangan bikin komputer lemot selama proses"
+                                      Click="OnPerformanceChanged"/>
+                            <TextBlock x:Name="LblEncoderNote" Style="{StaticResource Hint}"
+                                       Margin="18,0,0,0" Text=""
+                                       TextTrimming="CharacterEllipsis"/>
                         </StackPanel>
                     </Grid>
                 </Grid>
@@ -164,6 +201,7 @@
             <TabItem Header="Subtitle Permanen" Style="{StaticResource Tab}">
                 <Grid Margin="16,14,16,14">
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
@@ -193,10 +231,9 @@
                     <TextBlock Grid.Row="1" Style="{StaticResource Hint}" Margin="0,7,0,0"
                                Text="Subtitle diambil otomatis dari dalam video, atau dari berkas .srt/.ass yang senama di folder yang sama."/>
 
-                    <Separator Grid.Row="2" Margin="0,12,0,0"
-                               Background="{StaticResource BorderBrushSoft}"/>
+                    <Separator Grid.Row="2" Margin="0,14,0,0"/>
 
-                    <DockPanel Grid.Row="2" Margin="0,20,0,8" VerticalAlignment="Bottom">
+                    <DockPanel Grid.Row="3" Margin="0,12,0,8">
                         <Button DockPanel.Dock="Left" Content="Centang Semua"
                                 Style="{StaticResource BtnTool}" Click="OnSubCheckAll"/>
                         <Button DockPanel.Dock="Left" Content="Lepas Semua"
@@ -204,10 +241,15 @@
                         <Button DockPanel.Dock="Left" Content="Hapus"
                                 Style="{StaticResource BtnTool}" Click="OnSubRemove"/>
                         <TextBlock x:Name="LblSubSummary" Style="{StaticResource Hint}"
-                                   HorizontalAlignment="Right" TextAlignment="Right"/>
+                                   HorizontalAlignment="Right" TextAlignment="Right"
+                                   TextTrimming="CharacterEllipsis" MinWidth="60"/>
                     </DockPanel>
 
-                    <DataGrid Grid.Row="3" x:Name="GridSubs" MinHeight="100"
+                    <TextBlock Grid.Row="4" x:Name="LblEmptySubs"
+                               Style="{StaticResource Empty}"
+                               VerticalAlignment="Center" Panel.ZIndex="1"
+                               Text="Belum ada video.&#10;Pilih folder atau berkas video yang punya subtitle."/>
+                    <DataGrid Grid.Row="4" x:Name="GridSubs" MinHeight="100"
                               SelectionChanged="OnSubSelectionChanged"
                               MouseDoubleClick="OnSubDoubleClick"
                               PreviewKeyDown="OnSubGridKeyDown">
@@ -237,7 +279,7 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Grid Grid.Row="4" Margin="0,14,0,0">
+                    <Grid Grid.Row="5" Margin="0,14,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
@@ -251,14 +293,14 @@
                                 Click="OnSubChooseFile"/>
                     </Grid>
 
-                    <StackPanel Grid.Row="5" Margin="0,10,0,0">
+                    <StackPanel Grid.Row="6" Margin="0,10,0,0">
                         <StackPanel Orientation="Horizontal">
                             <CheckBox x:Name="ChkStyle" Content="Atur tampilan subtitle"
                                       Margin="0,0,16,0" Click="OnStyleToggled"/>
                             <TextBlock Text="Font" Margin="0,0,8,0"/>
                             <ComboBox x:Name="CmbFont" Width="150"/>
                             <TextBlock Text="Ukuran" Margin="16,0,8,0"/>
-                            <TextBox x:Name="TxtSubSize" Width="46" Text="24"/>
+                            <TextBox x:Name="TxtSubSize" Width="58" Text="24"/>
                             <TextBlock Text="Warna" Margin="16,0,8,0"/>
                             <Button x:Name="BtnColour" Width="34" Content=" "
                                     Click="OnPickPrimary"/>
@@ -287,7 +329,7 @@
                             <TextBlock Text="Format" Margin="18,0,8,0"/>
                             <ComboBox x:Name="CmbContainer" Width="80"/>
                             <TextBlock Text="Kualitas (CRF)" Margin="18,0,8,0"/>
-                            <TextBox x:Name="TxtSubCrf" Width="46" Text="20"/>
+                            <TextBox x:Name="TxtSubCrf" Width="58" Text="20"/>
                             <CheckBox x:Name="ChkCopyAudio" Margin="18,0,0,0"
                                       Content="Salin audio tanpa encode ulang"/>
                         </StackPanel>

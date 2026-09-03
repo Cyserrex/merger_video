@@ -167,6 +167,16 @@ namespace VideoMerger.Core
         }
 
         /// <summary>
+        /// Kalau true, ffmpeg dijalankan di bawah prioritas normal.
+        ///
+        /// Prosesnya sendiri nyaris tidak melambat - ia tetap mendapat seluruh
+        /// CPU yang menganggur - tetapi penggunanya bisa terus memakai
+        /// komputernya selama render. Tanpa ini, delapan jam encode ulang
+        /// membuat laptop lawas praktis tidak bisa dipakai apa-apa.
+        /// </summary>
+        public static bool BackgroundPriority = true;
+
+        /// <summary>
         /// Luncurkan proses panjang yang keluarannya dibaca baris per baris.
         /// stdin dibiarkan terbuka supaya kita bisa mengirim "q" untuk
         /// berhenti dengan rapi (yang membuat indeks container tertulis)
@@ -180,7 +190,25 @@ namespace VideoMerger.Core
                 psi.WorkingDirectory = workingDirectory;
             var proc = new Process { StartInfo = psi };
             proc.Start();
+            if (BackgroundPriority) TrySetBelowNormal(proc);
             return proc;
+        }
+
+        private static void TrySetBelowNormal(Process proc)
+        {
+            try
+            {
+                // Bukan Idle: Idle berarti ffmpeg hanya jalan saat tidak ada
+                // apa pun yang berjalan, dan pekerjaan delapan jam bisa jadi
+                // tidak selesai-selesai. BelowNormal cukup untuk menjaga
+                // antarmuka tetap responsif.
+                proc.PriorityClass = ProcessPriorityClass.BelowNormal;
+            }
+            catch (Exception)
+            {
+                // Prosesnya sudah selesai, atau kebijakan sistem melarang.
+                // Bukan alasan untuk menggagalkan pekerjaannya.
+            }
         }
 
         /// <summary>Bunuh proses beserta anak-anaknya, tanpa pernah melempar.</summary>

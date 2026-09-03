@@ -36,6 +36,8 @@
     <!-- JavaScriptSerializer: pengurai JSON bawaan .NET Framework, dipakai
          untuk keluaran ffprobe supaya tidak perlu paket NuGet apa pun. -->
     <Reference Include="System.Web.Extensions" />
+    <!-- WMI, hanya untuk membaca nama kartu grafis yang ditampilkan. -->
+    <Reference Include="System.Management" />
   </ItemGroup>
 
 </Project>

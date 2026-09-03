@@ -50,20 +50,19 @@ namespace VideoMerger.App
         // diam-diam berhenti bekerja.
         private SortBy _explicitSort = SortBy.Name;
 
+        // Daftar encoder yang ditampilkan: (id, label). Isinya ditentukan
+        // hasil pengukuran, bukan daftar tetap.
+        private readonly List<Tuple<string, string>> _encoderChoices =
+            new List<Tuple<string, string>>();
+        private string _autoEncoder = "";          // hasil benchmark, "" = CPU
+        private string _benchDetail = "";
+        private bool _benchRunning;
+
         private readonly List<string> _pendingLog = new List<string>();
         private DispatcherTimer _logTimer;
         private List<Tuple<string, string, object>> _sourceOptions =
             new List<Tuple<string, string, object>>();
         private bool _loading = true;
-
-        private static readonly Tuple<string, string>[] HwEncoders =
-        {
-            Tuple.Create("", "Otomatis (CPU / libx264)"),
-            Tuple.Create("h264_nvenc", "NVIDIA NVENC (H.264)"),
-            Tuple.Create("hevc_nvenc", "NVIDIA NVENC (H.265)"),
-            Tuple.Create("h264_qsv", "Intel QuickSync (H.264)"),
-            Tuple.Create("h264_amf", "AMD AMF (H.264)"),
-        };
 
         private static readonly string[] FontChoices =
         {
@@ -101,7 +100,6 @@ namespace VideoMerger.App
             foreach (MergeMode mode in Enum.GetValues(typeof(MergeMode)))
                 CmbMode.Items.Add(Labels.Of(mode));
 
-            foreach (var enc in HwEncoders) CmbEncoder.Items.Add(enc.Item2);
             foreach (string font in FontChoices) CmbFont.Items.Add(font);
             foreach (string ext in Hardsubber.OutputExtensions) CmbContainer.Items.Add(ext);
 
@@ -109,7 +107,8 @@ namespace VideoMerger.App
             if (_explicitSort == SortBy.Manual) _explicitSort = SortBy.Name;
             CmbSort.SelectedItem = Labels.Of(_explicitSort);
             CmbMode.SelectedItem = Labels.Of(_settings.MergeMode);
-            CmbEncoder.SelectedIndex = 0;
+            ChkBackgroundPriority.IsChecked = _settings.GetBool("background_priority");
+            Shell.BackgroundPriority = _settings.GetBool("background_priority");
 
             TxtFolder.Text = _settings["last_input_dir"];
             ChkRecursive.IsChecked = _settings.GetBool("recursive");
@@ -197,13 +196,17 @@ namespace VideoMerger.App
             if (_tools != null)
             {
                 LblFFmpeg.Text = "FFmpeg " + _tools.ShortVersion + " (" + _tools.Source + ")";
-                DetectEncoders();
+                DotFFmpeg.Fill = (Brush)FindResource("Success");
+                ShowHardware();
+                RefreshEncoders();
+                if (FFmpegUpdater.DueForCheck(_settings)) CheckFFmpegUpdate(true);
                 if (!string.IsNullOrWhiteSpace(TxtFolder.Text)) Rescan();
                 return;
             }
 
             LblFFmpeg.Text = "FFmpeg tidak ditemukan";
             LblFFmpeg.Foreground = (Brush)FindResource("Danger");
+            DotFFmpeg.Fill = (Brush)FindResource("Danger");
 
             var answer = MessageBox.Show(
                 "Aplikasi ini memerlukan FFmpeg untuk memproses video, tetapi "
@@ -227,28 +230,253 @@ namespace VideoMerger.App
             }
         }
 
-        private void DetectEncoders()
+        /// <summary>
+        /// Isi daftar encoder dari hasil pengukuran.
+        ///
+        /// Dijalankan di latar belakang tanpa kecuali: membaca daftar encoder
+        /// saja sudah memakan 100-300 ms, dan mengukurnya beberapa detik.
+        /// Versi sebelumnya melakukan yang pertama di thread UI, dan jendelanya
+        /// membeku sesaat setiap kali dibuka - persis di komputer lambat yang
+        /// paling tidak boleh mengalaminya.
+        /// </summary>
+        private void RefreshEncoders(bool forceBenchmark = false)
         {
-            string listed = "";
-            try
+            if (_tools == null || _benchRunning) return;
+            var tools = _tools;
+
+            // Diberi nilai awal: operator && memutus jalur ketika
+            // forceBenchmark true, sehingga TryCached tidak pernah terpanggil
+            // dan variabel out-nya tidak pernah terisi.
+            string cachedBest = "", cachedDetail = "";
+            bool haveCache = !forceBenchmark
+                && EncoderBenchmark.TryCached(_settings, tools,
+                                              out cachedBest, out cachedDetail);
+            if (haveCache)
             {
-                var res = Shell.RunCapture(
-                    new[] { _tools.FFmpeg, "-hide_banner", "-encoders" }, 20);
-                listed = res.StdOut ?? "";
+                _autoEncoder = cachedBest;
+                _benchDetail = cachedDetail;
+                BuildEncoderList(EncoderBenchmark.Listed(tools));
+                return;
             }
-            catch (Exception) { }
 
+            _benchRunning = true;
+            BtnBenchmark.IsEnabled = false;
+            LblEncoderNote.Text = "Mengukur kecepatan encoder...";
+            // Kotak yang benar-benar kosong terbaca sebagai aplikasi rusak,
+            // bukan sebagai sesuatu yang sedang bekerja.
+            CmbEncoder.SelectionChanged -= OnEncoderChanged;
             CmbEncoder.Items.Clear();
-            CmbEncoder.Items.Add(HwEncoders[0].Item2);
-            for (int i = 1; i < HwEncoders.Length; i++)
-                if (listed.Contains(" " + HwEncoders[i].Item1 + " "))
-                    CmbEncoder.Items.Add(HwEncoders[i].Item2);
-
-            string saved = _settings["hwaccel_encoder"];
+            CmbEncoder.Items.Add("Mengukur kecepatan...");
             CmbEncoder.SelectedIndex = 0;
-            foreach (var enc in HwEncoders)
-                if (enc.Item1 == saved && CmbEncoder.Items.Contains(enc.Item2))
-                { CmbEncoder.SelectedItem = enc.Item2; break; }
+            CmbEncoder.IsEnabled = false;
+            CmbEncoder.SelectionChanged += OnEncoderChanged;
+
+            Task.Run(() =>
+            {
+                var listed = EncoderBenchmark.Listed(tools);
+                var scores = EncoderBenchmark.Measure(
+                    tools, new TargetSpec(),
+                    (done, total, label) => Dispatcher.BeginInvoke(new Action(() =>
+                        LblEncoderNote.Text = "Mengukur " + (done + 1) + "/" + total
+                                              + ": " + label + "..."),
+                        DispatcherPriority.Background));
+
+                Dispatcher.Invoke(() =>
+                {
+                    EncoderBenchmark.StoreCache(_settings, tools, scores);
+                    _autoEncoder = EncoderBenchmark.Best(scores);
+                    var sb = new StringBuilder();
+                    foreach (var score in scores)
+                    {
+                        if (sb.Length > 0) sb.Append("; ");
+                        sb.Append(score.Describe());
+                    }
+                    _benchDetail = sb.ToString();
+                    BuildEncoderList(listed);
+                    _benchRunning = false;
+                    BtnBenchmark.IsEnabled = true;
+                });
+            });
+        }
+
+        private void BuildEncoderList(List<EncoderCandidate> listed)
+        {
+            _encoderChoices.Clear();
+            // Entri pertama selalu "Otomatis" dan menyebut pemenangnya, supaya
+            // penggunanya tahu apa yang sebenarnya akan dipakai - bukan sekadar
+            // kata "otomatis" yang tidak menjelaskan apa-apa.
+            // Tanpa kurung bersarang: "Otomatis - tercepat (CPU (libx264))"
+            // terpotong jadi "...(CPU (libx" di kotak selebar apa pun yang wajar.
+            _encoderChoices.Add(Tuple.Create("__auto__",
+                "Otomatis - " + EncoderBenchmark.LabelOf(_autoEncoder)));
+            _encoderChoices.Add(Tuple.Create("", "CPU (libx264)"));
+            foreach (var candidate in listed)
+                if (candidate.Vendor != "CPU")
+                    _encoderChoices.Add(Tuple.Create(candidate.Id, candidate.Label));
+
+            CmbEncoder.SelectionChanged -= OnEncoderChanged;
+            CmbEncoder.Items.Clear();
+            foreach (var choice in _encoderChoices) CmbEncoder.Items.Add(choice.Item2);
+
+            string saved = _settings.GetBool("encoder_auto")
+                ? "__auto__" : _settings["hwaccel_encoder"];
+            int index = _encoderChoices.FindIndex(c => c.Item1 == saved);
+            CmbEncoder.SelectedIndex = index >= 0 ? index : 0;
+            CmbEncoder.IsEnabled = true;
+            CmbEncoder.SelectionChanged += OnEncoderChanged;
+
+            LblEncoderNote.Text = _benchDetail;
+            LblEncoderNote.ToolTip = _benchDetail;
+        }
+
+        /// <summary>Encoder yang benar-benar dipakai, setelah "Otomatis" diterjemahkan.</summary>
+        private string SelectedEncoder()
+        {
+            int index = CmbEncoder.SelectedIndex;
+            if (index < 0 || index >= _encoderChoices.Count) return "";
+            string id = _encoderChoices[index].Item1;
+            return id == "__auto__" ? _autoEncoder : id;
+        }
+
+        private void OnEncoderChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_loading) return;
+            int index = CmbEncoder.SelectedIndex;
+            if (index < 0 || index >= _encoderChoices.Count) return;
+            string id = _encoderChoices[index].Item1;
+            _settings.Set("encoder_auto", id == "__auto__");
+            if (id != "__auto__") _settings.Set("hwaccel_encoder", id);
+            _settings.Save();
+        }
+
+        private void OnRunBenchmark(object sender, RoutedEventArgs e)
+        {
+            if (BusyGuard()) return;
+            EncoderBenchmark.ClearCache(_settings);
+            RefreshEncoders(true);
+        }
+
+        private void OnPerformanceChanged(object sender, RoutedEventArgs e)
+        {
+            bool on = ChkBackgroundPriority.IsChecked == true;
+            Shell.BackgroundPriority = on;
+            _settings.Set("background_priority", on);
+            _settings.Save();
+        }
+
+        // ------------------------------------------- pembaruan FFmpeg --
+        private void OnCheckFFmpegUpdate(object sender, RoutedEventArgs e)
+        {
+            if (_tools == null) { DetectFFmpeg(); return; }
+            if (BusyGuard()) return;
+            CheckFFmpegUpdate(false);
+        }
+
+        /// <summary>
+        /// `silent` = pemeriksaan berkala saat aplikasi dibuka: hanya
+        /// memberitahu kalau memang ada versi baru, dan tidak pernah
+        /// memunculkan kotak dialog kalau jaringannya mati.
+        /// </summary>
+        private void CheckFFmpegUpdate(bool silent)
+        {
+            var tools = _tools;
+            if (tools == null) return;
+            BtnFFmpegUpdate.IsEnabled = false;
+            if (!silent) BtnFFmpegUpdate.Content = "Memeriksa...";
+
+            Task.Run(() =>
+            {
+                var check = FFmpegUpdater.Check(tools);
+                Dispatcher.Invoke(() => OnUpdateChecked(check, silent));
+            });
+        }
+
+        private void OnUpdateChecked(UpdateCheck check, bool silent)
+        {
+            BtnFFmpegUpdate.IsEnabled = true;
+            BtnFFmpegUpdate.Content = "Periksa pembaruan";
+            FFmpegUpdater.MarkChecked(_settings);
+
+            if (!check.Checked)
+            {
+                if (!silent)
+                    MessageBox.Show("Gagal memeriksa pembaruan FFmpeg.\n\n"
+                                    + check.Error, AppInfo.Name,
+                                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!check.UpdateAvailable)
+            {
+                if (!silent)
+                    MessageBox.Show("FFmpeg sudah versi terbaru (" + check.Latest + ").",
+                                    AppInfo.Name, MessageBoxButton.OK,
+                                    MessageBoxImage.Information);
+                return;
+            }
+
+            BtnFFmpegUpdate.Content = "Perbarui ke " + check.Latest;
+
+            if (!check.Managed)
+            {
+                // FFmpeg ini milik winget/chocolatey/scoop atau ditaruh sendiri
+                // oleh penggunanya. Menimpanya berarti diam-diam mengambil alih
+                // pemasangan yang bukan kita buat, dan pembaruan berikutnya
+                // dari alat aslinya akan bertabrakan.
+                if (silent) return;
+                MessageBox.Show(
+                    "Tersedia FFmpeg " + check.Latest + " (terpasang " + check.Installed
+                    + ").\n\nFFmpeg ini dipasang lewat " + _tools.Source
+                    + ", bukan oleh aplikasi ini, jadi pembaruannya sebaiknya lewat "
+                    + "alat yang sama - misalnya:\n\n    winget upgrade Gyan.FFmpeg",
+                    AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (MessageBox.Show(
+                    "Tersedia FFmpeg " + check.Latest + " (terpasang "
+                    + check.Installed + ").\n\nUnduh dan pasang sekarang? "
+                    + "Ukurannya sekitar 80 MB.", AppInfo.Name,
+                    MessageBoxButton.YesNo, MessageBoxImage.Question)
+                == MessageBoxResult.Yes)
+                UpdateFFmpeg();
+        }
+
+        private void UpdateFFmpeg()
+        {
+            if (BusyGuard()) return;
+            _scanCancel = new CancellationTokenSource();
+            var token = _scanCancel.Token;
+            SetBusy(true, "Memperbarui FFmpeg...");
+
+            _worker = Task.Run(() =>
+            {
+                FFmpegTools tools = null;
+                try
+                {
+                    tools = FFmpegUpdater.Update(
+                        (done, total, msg) => Report(new Progress
+                        {
+                            Stage = Stage.Scanning,
+                            Fraction = total > 0 ? (double)done / total : 0,
+                            Message = msg + " " + Humanize.Size(done)
+                                      + (total > 0 ? " / " + Humanize.Size(total) : ""),
+                        }),
+                        () => token.IsCancellationRequested);
+                }
+                catch (Exception) { tools = null; }
+                Dispatcher.Invoke(() =>
+                {
+                    OnFFmpegReady(tools);
+                    if (tools != null)
+                    {
+                        // Versi FFmpeg ikut masuk sidik jari benchmark, jadi
+                        // angka lamanya sudah tidak berlaku.
+                        EncoderBenchmark.ClearCache(_settings);
+                        RefreshEncoders(true);
+                    }
+                });
+            });
         }
 
         private void DownloadFFmpeg()
@@ -294,7 +522,8 @@ namespace VideoMerger.App
                 _tools = tools;
                 LblFFmpeg.Text = "FFmpeg " + tools.ShortVersion + " (" + tools.Source + ")";
                 LblFFmpeg.Foreground = (Brush)FindResource("Muted");
-                DetectEncoders();
+                DotFFmpeg.Fill = (Brush)FindResource("Success");
+                RefreshEncoders();
                 MessageBox.Show("FFmpeg berhasil dipasang.", AppInfo.Name);
             }
             else
@@ -602,6 +831,30 @@ namespace VideoMerger.App
             UpdateSummary();
         }
 
+        /// <summary>
+        /// Tabel kosong yang benar-benar kosong hanya terlihat seperti aplikasi
+        /// yang rusak. Pesan ini yang memberi tahu apa yang harus dilakukan.
+        /// </summary>
+        private void UpdateEmptyStates()
+        {
+            LblEmptyFiles.Visibility = _rows.Count == 0
+                ? Visibility.Visible : Visibility.Collapsed;
+            LblEmptySubs.Visibility = _subRows.Count == 0
+                ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void ShowHardware()
+        {
+            // WMI bisa memakan ratusan milidetik di mesin lama, jadi tidak
+            // pernah di thread UI.
+            Task.Run(() =>
+            {
+                string summary = Hardware.Summary();
+                Dispatcher.BeginInvoke(new Action(() => LblHardware.Text = summary),
+                                       DispatcherPriority.Background);
+            });
+        }
+
         private void UpdateSummary()
         {
             var chosen = _rows.Where(r => r.Selected && r.File.Valid)
@@ -618,6 +871,7 @@ namespace VideoMerger.App
                                       : "perlu encode ulang");
             }
             LblSummary.Text = text;
+            UpdateEmptyStates();
         }
 
         private void OnChooseOutput(object sender, RoutedEventArgs e)
@@ -687,8 +941,7 @@ namespace VideoMerger.App
                 return;
 
             MergeMode mode = SelectedMode();
-            string encoder = HwEncoders.FirstOrDefault(
-                x => x.Item2 == (CmbEncoder.SelectedItem as string))?.Item1 ?? "";
+            string encoder = SelectedEncoder();
 
             double total = chosen.Sum(f => f.Duration);
             bool copyable = false;
@@ -707,7 +960,10 @@ namespace VideoMerger.App
                 return;
 
             int crf = CrfValue(TxtCrf, "crf");
-            _settings.Set("hwaccel_encoder", encoder);
+            // Pilihan encoder disimpan oleh OnEncoderChanged, bukan di sini.
+            // Menyimpannya sekarang akan menulis hasil "Otomatis" ke dalam
+            // preferensi MANUAL, sehingga mematikan mode otomatis nanti
+            // memberi pilihan yang sebenarnya tidak pernah ditunjuk pengguna.
             _settings.Set("last_output_dir", Path.GetDirectoryName(output) ?? "");
             SaveSettings();
 
@@ -878,6 +1134,7 @@ namespace VideoMerger.App
             LblSubSummary.Text = chosen.Count + " video dipilih  |  "
                 + Humanize.Duration(total) + "  |  " + Humanize.Size(size)
                 + "  |  selalu encode ulang";
+            UpdateEmptyStates();
         }
 
         private void OnSubCheckAll(object sender, RoutedEventArgs e) => SetSubAll(true);
@@ -1133,8 +1390,7 @@ namespace VideoMerger.App
                 return;
 
             int crf = CrfValue(TxtSubCrf, "hardsub_crf");
-            string encoder = HwEncoders.FirstOrDefault(
-                x => x.Item2 == (CmbEncoder.SelectedItem as string))?.Item1 ?? "";
+            string encoder = SelectedEncoder();
             SaveSettings();
 
             var job = new HardsubJob
