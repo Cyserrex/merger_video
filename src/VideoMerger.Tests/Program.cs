@@ -966,6 +966,33 @@ namespace VideoMerger.Tests
                   manual.Count > 0 && manual[0].Key == "pengaturan",
                   manual.Count > 0 ? manual[0].Key : "kosong");
 
+            // -- sisa pemasangan yang gagal -----------------------------------
+            // Unduhan yang dibatalkan atau gagal dulu meninggalkan folder
+            // kosong permanen di %APPDATA%, dan folder itu tetap terbaca
+            // sebagai "unduhan aplikasi" di daftar pencarian.
+            string fakeTarget = Path.Combine(_work, "ffmpeg_gagal");
+            string fakeBin = Path.Combine(fakeTarget, "bin");
+            Directory.CreateDirectory(fakeBin);
+            FFmpegLocator.CleanEmptyInstall(fakeBin, fakeTarget);
+            Check("pemasangan kosong dibuang", !Directory.Exists(fakeTarget),
+                  fakeTarget);
+
+            // Setengah jadi juga tidak berguna: satu exe tanpa pasangannya
+            // membuat setiap berkas dilaporkan rusak.
+            Directory.CreateDirectory(fakeBin);
+            File.WriteAllText(Path.Combine(fakeBin, "ffmpeg.exe"), "x");
+            FFmpegLocator.CleanEmptyInstall(fakeBin, fakeTarget);
+            Check("pemasangan setengah jadi dibuang", !Directory.Exists(fakeTarget),
+                  fakeTarget);
+
+            // Yang lengkap tidak boleh disentuh sama sekali.
+            Directory.CreateDirectory(fakeBin);
+            File.WriteAllText(Path.Combine(fakeBin, "ffmpeg.exe"), "x");
+            File.WriteAllText(Path.Combine(fakeBin, "ffprobe.exe"), "x");
+            FFmpegLocator.CleanEmptyInstall(fakeBin, fakeTarget);
+            Check("pemasangan lengkap TIDAK ikut terhapus",
+                  File.Exists(Path.Combine(fakeBin, "ffmpeg.exe")), fakeBin);
+
             // Penjadwalan: mati kalau tidak diminta, hidup kalau belum pernah.
             var settings = new AppSettings();
             settings.Set("ffmpeg_auto_check", false);

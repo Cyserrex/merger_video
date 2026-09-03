@@ -586,6 +586,28 @@ namespace VideoMerger.App
             }
         }
 
+        /// <summary>
+        /// Pastikan FFmpeg ada sebelum pekerjaan dimulai, dan tawarkan lagi
+        /// kalau belum. Mengembalikan false berarti pemanggilnya harus berhenti.
+        ///
+        /// Dulu tombol utamanya hanya `return` diam-diam ketika FFmpeg belum
+        /// ada. Penggunanya menekan "GABUNGKAN VIDEO" dan TIDAK TERJADI
+        /// APA-APA - tanpa pesan, tanpa suara. Itu gampang terjadi: dialog
+        /// FFmpeg saat aplikasi dibuka punya pilihan "Nanti saja", dan setelah
+        /// memilihnya tombolnya mati tanpa penjelasan sampai aplikasinya
+        /// dibuka ulang.
+        /// </summary>
+        private bool EnsureFFmpeg()
+        {
+            if (_tools != null) return true;
+            DetectFFmpeg();
+            if (_tools != null) return true;
+            // DetectFFmpeg sudah menampilkan pilihannya. Kalau penggunanya
+            // menolak lagi, setidaknya katakan kenapa tidak ada yang jalan.
+            LblStatus.Text = "FFmpeg belum ada - proses tidak bisa dimulai.";
+            return false;
+        }
+
         // ============================================= tab 1: gabungkan --
         /// <summary>True kalau ada proses berjalan, artinya pemanggil harus berhenti.</summary>
         private bool BusyGuard()
@@ -948,7 +970,8 @@ namespace VideoMerger.App
         // ========================================== tab 1: penggabungan --
         private void StartMerge()
         {
-            if (_busy || _tools == null) return;
+            if (_busy) return;
+            if (!EnsureFFmpeg()) return;
 
             // Pemindaian yang diinterupsi meninggalkan berkas yang belum
             // dilihat siapa pun. Menggabung sekarang akan diam-diam
@@ -1398,7 +1421,8 @@ namespace VideoMerger.App
 
         private void StartHardsub()
         {
-            if (_busy || _tools == null) return;
+            if (_busy) return;
+            if (!EnsureFFmpeg()) return;
 
             var chosen = _subRows.Where(r => r.Selected).Select(r => r.Item).ToList();
             if (chosen.Count == 0)

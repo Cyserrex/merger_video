@@ -243,7 +243,11 @@ namespace VideoMerger.Core
 
             try
             {
-                Directory.CreateDirectory(binDir);
+                // Foldernya BELUM dibuat di sini. Membuatnya lebih dulu lalu
+                // gagal atau dibatalkan meninggalkan folder kosong yang
+                // permanen di %APPDATA%, dan folder itu ikut muncul di daftar
+                // pencarian sebagai "unduhan aplikasi" yang isinya tidak ada.
+                // Dibuat nanti, setelah zip-nya benar-benar di tangan.
                 Report(0, 0, "Menghubungi server gyan.dev...");
 
                 // TLS 1.2 harus diminta eksplisit: pada .NET Framework 4.8 di
@@ -274,6 +278,7 @@ namespace VideoMerger.Core
                 }
 
                 Report(0, 0, "Mengekstrak...");
+                Directory.CreateDirectory(binDir);
                 using (var zip = ZipFile.OpenRead(tmpZip))
                 {
                     bool any = false;
@@ -298,7 +303,36 @@ namespace VideoMerger.Core
             {
                 try { if (File.Exists(tmpZip)) File.Delete(tmpZip); }
                 catch (IOException) { }
+                // Ekstraksi yang gagal di tengah bisa meninggalkan folder tanpa
+                // kedua exe-nya. Folder itu tetap terbaca sebagai "unduhan
+                // aplikasi" di daftar pencarian, jadi lebih baik tidak ada
+                // sama sekali daripada ada tapi kosong.
+                CleanEmptyInstall(binDir, target);
             }
+        }
+
+        /// <summary>
+        /// Hapus folder pemasangan yang tidak memuat kedua exe yang dibutuhkan.
+        /// Hanya folder milik aplikasi yang disentuh, dan hanya kalau memang
+        /// tidak berguna - pemasangan yang utuh tidak pernah ikut terhapus.
+        /// </summary>
+        public static void CleanEmptyInstall(string binDir, string target)
+        {
+            try
+            {
+                if (!Directory.Exists(binDir)) return;
+                bool complete = File.Exists(Path.Combine(binDir, FFmpegName))
+                                && File.Exists(Path.Combine(binDir, FFprobeName));
+                if (complete) return;
+
+                Directory.Delete(binDir, true);
+                // Folder induknya ikut dibuang kalau jadi kosong, supaya tidak
+                // ada %APPDATA%\vmerge\ffmpeg kosong yang menggantung.
+                if (Directory.Exists(target)
+                    && Directory.GetFileSystemEntries(target).Length == 0)
+                    Directory.Delete(target);
+            }
+            catch (Exception) { }
         }
     }
 }
