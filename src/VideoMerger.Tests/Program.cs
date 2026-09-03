@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using VideoMerger.Core;
 using static VideoMerger.Tests.Harness;
 
@@ -857,10 +858,10 @@ namespace VideoMerger.Tests
             // jadi "" karena itu memang nilai bawaan aplikasi.
             var fake = new List<EncoderScore>
             {
-                new EncoderScore { Candidate = EncoderBenchmark.Candidates[4],
-                                   Works = true, Fps = 50 },   // libx264
-                new EncoderScore { Candidate = EncoderBenchmark.Candidates[0],
-                                   Works = true, Fps = 300 },  // nvenc
+                new EncoderScore { Candidate = EncoderBenchmark.ById("libx264"),
+                                   Works = true, Fps = 50 },
+                new EncoderScore { Candidate = EncoderBenchmark.ById("h264_nvenc"),
+                                   Works = true, Fps = 300 },
             };
             Check("yang tercepat yang dipilih",
                   EncoderBenchmark.Best(fake) == "h264_nvenc",
@@ -868,9 +869,9 @@ namespace VideoMerger.Tests
 
             var cpuOnly = new List<EncoderScore>
             {
-                new EncoderScore { Candidate = EncoderBenchmark.Candidates[4],
+                new EncoderScore { Candidate = EncoderBenchmark.ById("libx264"),
                                    Works = true, Fps = 50 },
-                new EncoderScore { Candidate = EncoderBenchmark.Candidates[0],
+                new EncoderScore { Candidate = EncoderBenchmark.ById("h264_nvenc"),
                                    Works = false, Fps = 0 },
             };
             Check("encoder yang tidak jalan tidak pernah dipilih",
@@ -881,26 +882,26 @@ namespace VideoMerger.Tests
             // dan pemutar DVD yang jadi alasan aplikasi ini ada.
             var hevcFastest = new List<EncoderScore>
             {
-                new EncoderScore { Candidate = EncoderBenchmark.Candidates[1],
-                                   Works = true, Fps = 400 },  // hevc_nvenc
-                new EncoderScore { Candidate = EncoderBenchmark.Candidates[4],
-                                   Works = true, Fps = 318 },  // libx264
+                new EncoderScore { Candidate = EncoderBenchmark.ById("hevc_nvenc"),
+                                   Works = true, Fps = 400 },
+                new EncoderScore { Candidate = EncoderBenchmark.ById("libx264"),
+                                   Works = true, Fps = 318 },
             };
             Check("H.265 tidak pernah dipilih otomatis walau paling cepat",
                   EncoderBenchmark.Best(hevcFastest) == "",
                   EncoderBenchmark.Best(hevcFastest));
             Check("H.265 tetap ada di daftar untuk dipilih manual",
-                  !EncoderBenchmark.Candidates[1].AutoSelectable
-                  && EncoderBenchmark.Candidates[1].Codec == "hevc", "");
+                  !EncoderBenchmark.ById("hevc_nvenc").AutoSelectable
+                  && EncoderBenchmark.ById("hevc_nvenc").Codec == "hevc", "");
 
             // Angkanya harus bertahan lewat penyimpanan, bukan cuma
             // kalimatnya: daftar pilihan encoder menyebut fps tiap pilihan dan
             // mematikan yang tidak jalan, jadi keduanya harus terbaca kembali.
             var sample = new List<EncoderScore>
             {
-                new EncoderScore { Candidate = EncoderBenchmark.Candidates[0],
+                new EncoderScore { Candidate = EncoderBenchmark.ById("h264_nvenc"),
                                    Works = true, Fps = 297.4 },
-                new EncoderScore { Candidate = EncoderBenchmark.Candidates[3],
+                new EncoderScore { Candidate = EncoderBenchmark.ById("h264_amf"),
                                    Works = false },
             };
             var round = EncoderBenchmark.Deserialize(
@@ -918,6 +919,35 @@ namespace VideoMerger.Tests
             Check("teks rusak tidak menabrak",
                   EncoderBenchmark.Deserialize("sampah;=;x=1;h264_nvenc").Count == 0,
                   "");
+
+            // Cache dari versi LAMA menyimpan kalimat siap tampil, bukan
+            // pasangan id=fps. Sidik jarinya tetap cocok, jadi menerimanya
+            // membuat daftar pilihan kehilangan seluruh angkanya DAN tidak
+            // pernah mengukur ulang. Harus diperlakukan sebagai belum diukur.
+            var stale = new AppSettings();
+            stale.Set("encoder_bench_fingerprint", Hardware.Fingerprint(Tools));
+            stale.Set("encoder_bench_best", "");
+            stale.Set("encoder_bench_detail",
+                      "NVIDIA NVENC (H.264): 305 fps; CPU (libx264): 317 fps");
+            string staleBest;
+            List<EncoderScore> staleScores;
+            Check("cache format lama dianggap belum diukur",
+                  !EncoderBenchmark.TryCached(stale, Tools, out staleBest,
+                                              out staleScores),
+                  "diterima, sehingga fps tidak akan pernah muncul lagi");
+
+            // H.265 bukan milik NVIDIA saja: Intel dan AMD punya encoder
+            // perangkat kerasnya sendiri, dan libx265 mengerjakannya di CPU.
+            var hevcIds = new List<string>();
+            foreach (var c in EncoderBenchmark.Candidates)
+                if (c.Codec == "hevc") hevcIds.Add(c.Id);
+            Check("kandidat H.265 mencakup NVIDIA, Intel, AMD, dan CPU",
+                  hevcIds.Contains("hevc_nvenc") && hevcIds.Contains("hevc_qsv")
+                  && hevcIds.Contains("hevc_amf") && hevcIds.Contains("libx265"),
+                  string.Join(",", hevcIds));
+            Check("tidak satu pun H.265 dipilih otomatis",
+                  EncoderBenchmark.Candidates.All(c => c.Codec != "hevc"
+                                                       || !c.AutoSelectable), "");
 
             // Cache hanya sah untuk sidik jari yang sama.
             var settings = new AppSettings();

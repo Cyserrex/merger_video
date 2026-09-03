@@ -16,7 +16,7 @@ Ada dua cara, keduanya sah:
 | Berkas | Untuk siapa |
 |---|---|
 | **`VideoMerger-1.1.0-Setup.exe`** — installer | Pemakaian biasa. Membuat pintasan Start Menu / Desktop, terdaftar di *Apps & features*, bisa dihapus rapi. Bisa dipasang **tanpa hak administrator** — pilih "Pasang hanya untuk saya". |
-| **`VideoMerger.exe`** — satu file 374 KB, tanpa pasang | Dijalankan dari flashdisk atau folder jaringan, atau di PC yang melarang pemasangan. Tinggal klik dua kali. |
+| **`VideoMerger.exe`** — satu file 375 KB, tanpa pasang | Dijalankan dari flashdisk atau folder jaringan, atau di PC yang melarang pemasangan. Tinggal klik dua kali. |
 
 Keduanya tersedia di [halaman Releases](../../releases). Installernya 2,6 MB.
 
@@ -186,22 +186,49 @@ Ini bukan kehati-hatian berlebihan. Hasil nyata di satu mesin uji
 
 | Encoder | Kecepatan |
 |---|---|
-| NVIDIA NVENC (H.265) | 389 fps |
-| **CPU (libx264)** | **318 fps** |
-| NVIDIA NVENC (H.264) | 307 fps |
-| Intel QuickSync (H.264) | 114 fps |
-| AMD AMF | tidak jalan (tidak ada GPU AMD) |
+| NVIDIA NVENC (H.265) | 351 fps |
+| **NVIDIA NVENC (H.264)** | **309 fps** |
+| **CPU (libx264)** | **303 fps** |
+| Intel QuickSync (H.264) | 118 fps |
+| Intel QuickSync (H.265) | 71 fps |
+| CPU (libx265) | 69 fps |
+| AMD AMF (H.264 & H.265) | tidak jalan — tidak ada GPU AMD di mesin ini |
 
-Dua hal yang akan salah kalau ditebak: **QuickSync 2,8× lebih lambat daripada
-CPU**, dan **NVENC H.264 pun kalah tipis**. Aturan "pakai perangkat keras kalau
-ada" justru memperlambat di mesin ini.
+Seluruh pengukuran itu selesai dalam **10 detik**.
 
-Angka itu ikut tertulis **di tiap pilihan** pada kotak Encoder, jadi tidak perlu
-menebak apa yang dipilih "Otomatis" atau seberapa jauh selisihnya. Encoder yang
-terbukti tidak jalan tetap ditampilkan — supaya tidak ada yang bertanya "kenapa
-AMD hilang?" — tetapi **tidak bisa dipilih**, dan diberi keterangan *tidak
-didukung di PC ini*. Kalau pilihan tersimpan ternyata sudah mati (driver dicopot,
-GPU diganti), kotaknya kembali ke Otomatis alih-alih menunjuk pilihan mati.
+Dua hal yang akan salah kalau ditebak: **QuickSync 2,6× lebih lambat daripada
+CPU**, dan **NVENC H.264 cuma unggul 2% dari CPU** — begitu tipis sampai
+pemenangnya bisa bertukar antar-pengukuran. Aturan "pakai perangkat keras kalau
+ada" tidak memberi keuntungan berarti di mesin ini.
+
+Angka itu ikut tertulis **di tiap pilihan** pada kotak Encoder, **diberi warna**
+menurut seberapa cepat dibanding yang tercepat — hijau ≥90%, kuning ≥50%, merah
+di bawah itu. Warnanya menjawab "mana yang cepat" sebelum angkanya sempat dibaca.
+
+Encoder yang terbukti tidak jalan tetap ditampilkan — supaya tidak ada yang
+bertanya "kenapa AMD hilang?" — tetapi **tidak bisa dipilih**, dan diberi
+keterangan *tidak didukung*. Kalau pilihan tersimpan ternyata sudah mati (driver
+dicopot, GPU diganti), kotaknya kembali ke Otomatis alih-alih menunjuk pilihan mati.
+
+### H.265 bukan milik NVIDIA saja
+
+Salah paham yang mudah muncul karena daftar lamanya memang timpang — hanya
+`hevc_nvenc` yang ada. Yang sebenarnya diukur sekarang:
+
+| Codec | NVIDIA | Intel | AMD | CPU |
+|---|---|---|---|---|
+| H.264 | `h264_nvenc` | `h264_qsv` | `h264_amf` | `libx264` |
+| H.265 | `hevc_nvenc` | `hevc_qsv` | `hevc_amf` | `libx265` |
+
+**`x265` itu perangkat lunak**, bukan merek kartu grafis — `libx265` meng-encode
+H.265 di CPU mana pun, tanpa GPU sama sekali. Yang membedakan vendor adalah
+encoder *perangkat keras*-nya, dan ketiganya punya. Yang muncul di daftar Anda
+tetap hanya yang benar-benar jalan di PC itu.
+
+Di mesin uji tadi, `hevc_qsv` (Intel) **jalan** di 71 fps dan `libx265` (CPU)
+di 69 fps; yang gagal hanya `hevc_amf` — dan itu karena memang tidak ada GPU AMD
+di sana, bukan karena AMD tidak punya H.265. `h264_amf` gagal dengan alasan
+yang sama.
 
 > **H.265 tidak pernah dipilih otomatis** walaupun paling cepat, karena memilihnya
 > diam-diam mengubah codec keluaran jadi HEVC — dan HEVC persis yang tidak bisa
@@ -364,10 +391,10 @@ Lalu:
 
 ```bat
 build.bat          REM bangun saja
-build.bat test     REM bangun lalu jalankan 130 tes
+build.bat test     REM bangun lalu jalankan 133 tes
 ```
 
-Hasilnya `dist\VideoMerger.exe`, **satu berkas 374 KB**.
+Hasilnya `dist\VideoMerger.exe`, **satu berkas 375 KB**.
 
 `VideoMerger.Core.dll` ditanam ke dalam exe sebagai *embedded resource* dan dimuat
 lewat `AssemblyResolve`, supaya menyalin exe-nya sendirian ke flashdisk tetap
@@ -382,7 +409,7 @@ di sini:
   pemuatannya terjadi sebelum `AssemblyResolve` sempat terpasang.
 
 FFmpeg sengaja **tidak** dibundel: `ffmpeg.exe` build lengkap berukuran 217 MB,
-sehingga aplikasi 374 KB akan membengkak jadi ratusan MB.
+sehingga aplikasi 375 KB akan membengkak jadi ratusan MB.
 
 ### Membuat installer
 
@@ -420,7 +447,7 @@ C:\uji\vm\unins000.exe /VERYSILENT
 dotnet run --project src\VideoMerger.Tests -c Release
 ```
 
-130 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
+133 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
 **membuktikan** kerusakannya nyata sebelum memeriksa bahwa aplikasi menolaknya.
 
 Tes hardsub-nya juga tidak percaya pada kode keluar: video sumbernya **hitam polos**,
@@ -457,7 +484,7 @@ src/
     Rows.cs                 pembungkus baris tabel (INotifyPropertyChanged)
     Cli.cs                  antarmuka baris perintah
     EmbeddedAssemblies.cs   memuat Core.dll dari dalam exe
-  VideoMerger.Tests/        130 tes, semuanya menjalankan FFmpeg sungguhan
+  VideoMerger.Tests/        133 tes, semuanya menjalankan FFmpeg sungguhan
 build.bat                   bangun exe
 build_installer.bat         bangun exe + installer
 installer/setup.iss         skrip Inno Setup

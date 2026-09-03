@@ -360,17 +360,64 @@ namespace VideoMerger.App
             return null;
         }
 
+        /// <summary>Kecepatan tertinggi di antara yang berhasil diukur.</summary>
+        private double FastestFps()
+        {
+            double best = 0;
+            if (_benchScores == null) return 0;
+            foreach (var score in _benchScores)
+                if (score.Works && score.Fps > best) best = score.Fps;
+            return best;
+        }
+
         /// <summary>
-        /// Label satu pilihan, lengkap dengan kecepatannya:
-        /// "NVIDIA NVENC (H.264) - 297 fps".
+        /// Isi satu baris daftar: nama encoder di kiri, kecepatannya di kanan
+        /// dengan warna menurut seberapa cepat dibanding yang tercepat.
+        ///
+        /// Angkanya diberi warna, bukan sekadar ditulis, karena membandingkan
+        /// enam angka fps sambil membaca daftar itu pekerjaan yang tidak perlu
+        /// dibebankan ke penggunanya - warna menjawabnya sebelum angkanya
+        /// sempat dibaca.
         /// </summary>
-        private string EncoderLabel(string id, string baseLabel)
+        private object EncoderItemContent(string id, string baseLabel)
         {
             var score = ScoreOf(id);
             if (score == null) return baseLabel;
-            if (!score.Works) return baseLabel + "  -  tidak didukung di PC ini";
-            return baseLabel + "  -  "
-                   + score.Fps.ToString("0", CultureInfo.InvariantCulture) + " fps";
+
+            string text;
+            Brush brush;
+            if (!score.Works)
+            {
+                text = "tidak didukung";
+                brush = (Brush)FindResource("Muted");
+            }
+            else
+            {
+                text = score.Fps.ToString("0", CultureInfo.InvariantCulture) + " fps";
+                double fastest = FastestFps();
+                double share = fastest > 0 ? score.Fps / fastest : 0;
+                // Ambangnya dipilih supaya "hampir sama cepat" tidak terlihat
+                // berbeda: selisih 10% tidak akan terasa, selisih 2x akan.
+                brush = share >= 0.90 ? (Brush)FindResource("Success")
+                      : share >= 0.50 ? (Brush)FindResource("Warning")
+                      : (Brush)FindResource("Danger");
+            }
+
+            var panel = new DockPanel { LastChildFill = false, MinWidth = 250 };
+            var name = new TextBlock { Text = baseLabel };
+            DockPanel.SetDock(name, Dock.Left);
+            panel.Children.Add(name);
+
+            var value = new TextBlock
+            {
+                Text = text,
+                Foreground = brush,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(18, 0, 0, 0),
+            };
+            DockPanel.SetDock(value, Dock.Right);
+            panel.Children.Add(value);
+            return panel;
         }
 
         private void BuildEncoderList(List<EncoderCandidate> listed)
@@ -383,12 +430,16 @@ namespace VideoMerger.App
             // terpotong jadi "...(CPU (libx" di kotak selebar apa pun yang wajar.
             _encoderChoices.Add(Tuple.Create("__auto__",
                 "Otomatis - " + EncoderBenchmark.LabelOf(_autoEncoder)));
-            _encoderChoices.Add(Tuple.Create("",
-                EncoderLabel("libx264", "CPU (libx264)")));
+            _encoderChoices.Add(Tuple.Create("", "CPU (libx264)"));
             foreach (var candidate in listed)
                 if (candidate.Vendor != "CPU")
-                    _encoderChoices.Add(Tuple.Create(candidate.Id,
-                        EncoderLabel(candidate.Id, candidate.Label)));
+                    _encoderChoices.Add(Tuple.Create(candidate.Id, candidate.Label));
+            // libx265 bervendor CPU seperti libx264, jadi tidak ikut lewat
+            // gelung di atas; tanpa baris ini ia hilang dari daftar walaupun
+            // sudah diukur.
+            foreach (var candidate in listed)
+                if (candidate.Vendor == "CPU" && candidate.Id != "libx264")
+                    _encoderChoices.Add(Tuple.Create(candidate.Id, candidate.Label));
 
             CmbEncoder.SelectionChanged -= OnEncoderChanged;
             CmbEncoder.Items.Clear();
@@ -399,10 +450,13 @@ namespace VideoMerger.App
                 // orang bertanya "kenapa AMD tidak ada?" - tetapi tidak boleh
                 // bisa dipilih. `ffmpeg -encoders` mendaftarkan h264_amf di
                 // komputer tanpa GPU AMD sekalipun.
-                var score = ScoreOf(choice.Item1 == "" ? "libx264" : choice.Item1);
+                string scoreId = choice.Item1 == "" ? "libx264" : choice.Item1;
+                var score = ScoreOf(scoreId);
                 CmbEncoder.Items.Add(new ComboBoxItem
                 {
-                    Content = choice.Item2,
+                    Content = choice.Item1 == "__auto__"
+                        ? (object)choice.Item2
+                        : EncoderItemContent(scoreId, choice.Item2),
                     IsEnabled = choice.Item1 == "__auto__"
                                 || score == null || score.Works,
                 });

@@ -22,6 +22,9 @@
     <Color x:Key="AccentTintColor">#EEF3FD</Color>
     <Color x:Key="DangerColor">#C22B3E</Color>
     <Color x:Key="SuccessColor">#1B7F45</Color>
+    <!-- Kuning tua, bukan kuning terang: pada latar putih kuning terang
+         praktis tidak terbaca. Dipakai untuk kecepatan tingkat menengah. -->
+    <Color x:Key="WarningColor">#9A6400</Color>
     <Color x:Key="WarnColor">#9A6400</Color>
     <Color x:Key="RowAltColor">#F8FAFD</Color>
     <Color x:Key="SelectionColor">#DCE8FB</Color>
@@ -39,6 +42,7 @@
     <SolidColorBrush x:Key="AccentTint" Color="{StaticResource AccentTintColor}"/>
     <SolidColorBrush x:Key="Danger" Color="{StaticResource DangerColor}"/>
     <SolidColorBrush x:Key="Success" Color="{StaticResource SuccessColor}"/>
+    <SolidColorBrush x:Key="Warning" Color="{StaticResource WarningColor}"/>
     <SolidColorBrush x:Key="Warn" Color="{StaticResource WarnColor}"/>
     <SolidColorBrush x:Key="RowAlt" Color="{StaticResource RowAltColor}"/>
     <SolidColorBrush x:Key="Selection" Color="{StaticResource SelectionColor}"/>

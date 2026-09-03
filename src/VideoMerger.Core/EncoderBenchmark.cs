@@ -73,10 +73,20 @@ namespace VideoMerger.Core
                                    Codec = "hevc", Label = "NVIDIA NVENC (H.265)" },
             new EncoderCandidate { Id = "h264_qsv", Vendor = "Intel",
                                    Codec = "h264", Label = "Intel QuickSync (H.264)" },
+            // H.265 BUKAN milik NVIDIA saja. Intel punya hevc_qsv, AMD punya
+            // hevc_amf, dan libx265 mengerjakannya di CPU tanpa perangkat
+            // keras apa pun. Daftar lama hanya memuat hevc_nvenc, yang membuat
+            // seolah-olah HEVC cuma bisa di kartu NVIDIA.
+            new EncoderCandidate { Id = "hevc_qsv", Vendor = "Intel",
+                                   Codec = "hevc", Label = "Intel QuickSync (H.265)" },
             new EncoderCandidate { Id = "h264_amf", Vendor = "AMD",
                                    Codec = "h264", Label = "AMD AMF (H.264)" },
+            new EncoderCandidate { Id = "hevc_amf", Vendor = "AMD",
+                                   Codec = "hevc", Label = "AMD AMF (H.265)" },
             new EncoderCandidate { Id = "libx264", Vendor = "CPU",
                                    Codec = "h264", Label = "CPU (libx264)" },
+            new EncoderCandidate { Id = "libx265", Vendor = "CPU",
+                                   Codec = "hevc", Label = "CPU (libx265)" },
         };
 
         // 720p, 150 frame. Cukup panjang supaya waktu encode mendominasi biaya
@@ -202,6 +212,19 @@ namespace VideoMerger.Core
             return best == "libx264" ? "" : best;
         }
 
+        /// <summary>
+        /// Kandidat menurut id-nya, atau null. Ada supaya pemanggil tidak
+        /// mengindeks Candidates dengan angka: menyisipkan satu kandidat baru
+        /// di tengah daftar pernah membuat tiga tes menunjuk encoder yang
+        /// sama sekali berbeda tanpa satu pun galat kompilasi.
+        /// </summary>
+        public static EncoderCandidate ById(string id)
+        {
+            foreach (var candidate in Candidates)
+                if (candidate.Id == id) return candidate;
+            return null;
+        }
+
         public static string LabelOf(string encoderId)
         {
             if (string.IsNullOrEmpty(encoderId)) return "CPU (libx264)";
@@ -283,8 +306,17 @@ namespace VideoMerger.Core
             if (settings == null || tools == null) return false;
             string current = Hardware.Fingerprint(tools);
             if (settings[KeyFingerprint] != current) return false;
-            best = settings[KeyBest];
+
             scores = Deserialize(settings[KeyDetail]);
+            // Sidik jari cocok tetapi angkanya tidak terbaca sama sekali:
+            // itu cache dari versi lama, yang menyimpan kalimat siap tampil
+            // ("NVENC (H.264): 305 fps; ...") dan bukan pasangan id=fps.
+            // Menerimanya membuat daftar pilihan kehilangan seluruh angka
+            // DAN tidak pernah mengukur ulang - sidik jarinya kan cocok.
+            // Diperlakukan sebagai belum pernah diukur.
+            if (scores.Count == 0) return false;
+
+            best = settings[KeyBest];
             return true;
         }
 
