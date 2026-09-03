@@ -13,7 +13,7 @@ namespace VideoMerger.Core
     {
         public const string Name = "Video Merger";
         public const string Id = "vmerge";
-        public const string Version = "1.1.0";
+        public const string Version = "1.2.0";
 
         /// <summary>
         /// Ekstensi yang dianggap video saat memindai folder. Sengaja luas:

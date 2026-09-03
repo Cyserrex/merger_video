@@ -414,7 +414,59 @@ namespace VideoMerger.Core
         }
 
         /// <summary>
-        /// Perkiraan kasar ukuran berkas jadi, hanya untuk pemeriksaan disk.
+        /// Resolusi dan frame rate mayoritas di antara klip. Dipakai untuk
+        /// memperkirakan ukuran hasil dan lama proses tanpa harus membangun
+        /// target penuh. Mengembalikan false kalau tidak ada satu klip pun
+        /// yang melaporkan dimensi (nilai fallback 1920x1080@30 tetap terisi).
+        /// </summary>
+        public static bool EstimateGeometry(IList<VideoFile> files,
+                                            out int width, out int height, out double fps)
+        {
+            width = 1920; height = 1080; fps = 30.0;
+            if (files == null || files.Count == 0) return false;
+
+            var sizes = new Dictionary<string, int>(StringComparer.Ordinal);
+            var rates = new Dictionary<double, int>();
+            foreach (var f in files)
+            {
+                if (f.Width > 0 && f.Height > 0)
+                {
+                    string key = f.Width + "x" + f.Height;
+                    int n;
+                    sizes[key] = sizes.TryGetValue(key, out n) ? n + 1 : 1;
+                }
+                if (f.Fps > 0)
+                {
+                    int n;
+                    rates[f.Fps] = rates.TryGetValue(f.Fps, out n) ? n + 1 : 1;
+                }
+            }
+
+            bool have = false;
+            if (sizes.Count > 0)
+            {
+                string best = null; int bestCount = -1;
+                foreach (var pair in sizes)
+                    if (pair.Value > bestCount) { best = pair.Key; bestCount = pair.Value; }
+                string[] bits = best.Split('x');
+                width = int.Parse(bits[0], CultureInfo.InvariantCulture);
+                height = int.Parse(bits[1], CultureInfo.InvariantCulture);
+                have = true;
+            }
+            if (rates.Count > 0)
+            {
+                double best = fps; int bestCount = -1;
+                foreach (var pair in rates)
+                    if (pair.Value > bestCount) { best = pair.Key; bestCount = pair.Value; }
+                fps = best;
+            }
+            return have;
+        }
+
+        /// <summary>
+        /// Perkiraan kasar ukuran berkas jadi. Statik supaya tampilan bisa
+        /// menyebut angkanya sebelum proses, memakai rumus yang sama persis
+        /// dengan pemeriksaan disk di bawah.
         ///
         /// Salin-langsung mudah: keluarannya adalah masukannya, dikurangi
         /// sedikit karena 100 header container terpisah menyatu jadi satu.
@@ -424,35 +476,41 @@ namespace VideoMerger.Core
         /// akan menuntut 126 GB untuk pekerjaan 720p 8 jam yang sebenarnya
         /// menghasilkan sekitar 8 GB, dan menolak mulai di disk mana pun.
         /// </summary>
-        private long EstimateOutputBytes(List<VideoFile> files, MergeMode mode)
+        public static long EstimateOutputBytes(IList<VideoFile> files, MergeMode mode)
         {
             long totalIn = 0;
             double duration = 0;
-            foreach (var f in files) { totalIn += f.Size; duration += f.Duration; }
+            if (files != null)
+                foreach (var f in files) { totalIn += f.Size; duration += f.Duration; }
 
             if (mode == MergeMode.Copy) return (long)(totalIn * 1.02);
 
-            // CheckDisk berjalan sebelum target dipilih, jadi perkiraannya
-            // diambil dari rekamannya sendiri. Memakai Job.Target di sini
-            // menghargai setiap pekerjaan sebagai 1080p30 - berlebihan 4x
-            // untuk folder berisi klip CCTV 640x480.
-            TargetSpec probe = files.Count > 0 ? AutoTarget(files) : Job.Target;
-            double pixelsPerSecond = Math.Max(1, probe.Width * probe.Height)
-                                     * Math.Max(1.0, probe.Fps);
+            int w, h; double fps;
+            EstimateGeometry(files, out w, out h, out fps);
+            double pixelsPerSecond = Math.Max(1.0, (double)w * h) * Math.Max(1.0, fps);
             // ~0,08 bit per piksel adalah angka CRF 23 yang murah hati;
-            // dibatasi supaya spesifikasi target yang aneh tidak menghasilkan
-            // tuntutan yang tidak masuk akal.
+            // dibatasi supaya spesifikasi yang aneh tidak menuntut yang tidak
+            // masuk akal.
             double bitsPerSecond = Math.Min(25000000.0,
                                             Math.Max(800000.0, pixelsPerSecond * 0.08));
             return (long)(duration * bitsPerSecond / 8.0 * 1.25);
         }
 
-        private void CheckDisk(List<VideoFile> files, string outPath, MergeMode mode)
+        /// <summary>
+        /// Puncak ruang disk yang dibutuhkan. Encode ulang menyimpan klip
+        /// ternormalisasi berdampingan dengan berkas akhir sampai penyambungan
+        /// selesai, jadi puncaknya kira-kira dua kali ukuran hasil.
+        /// </summary>
+        public static long PeakDiskNeed(IList<VideoFile> files, MergeMode mode)
         {
             long need = EstimateOutputBytes(files, mode);
-            // Klip ternormalisasi hidup berdampingan dengan berkas akhir sampai
-            // penyambungannya selesai, jadi puncak kebutuhannya kira-kira dua kali.
             if (mode != MergeMode.Copy) need *= 2;
+            return need;
+        }
+
+        private void CheckDisk(List<VideoFile> files, string outPath, MergeMode mode)
+        {
+            long need = PeakDiskNeed(files, mode);
 
             string dir = Path.GetDirectoryName(Path.GetFullPath(outPath));
             long free = Paths.DiskFree(string.IsNullOrEmpty(dir) ? "." : dir);
@@ -932,7 +990,12 @@ namespace VideoMerger.Core
         }
 
         // ------------------------------------------------- pemilihan target --
-        private static string MajoritySignature(List<VideoFile> files)
+        /// <summary>
+        /// Sidik tanda tangan salin yang paling banyak dipakai. Publik supaya
+        /// tampilan bisa menandai klip minoritas - yang justru akan di-encode
+        /// ulang pada mode Hemat.
+        /// </summary>
+        public static string MajoritySignature(List<VideoFile> files)
         {
             var counts = new Dictionary<string, int>(StringComparer.Ordinal);
             foreach (var f in files)

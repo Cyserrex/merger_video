@@ -18,7 +18,7 @@
     <AssemblyName>VideoMerger.Core</AssemblyName>
     <RootNamespace>VideoMerger.Core</RootNamespace>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <NeutralLanguage>id-ID</NeutralLanguage>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <WarningLevel>4</WarningLevel>

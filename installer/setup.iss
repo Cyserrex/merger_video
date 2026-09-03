@@ -12,7 +12,7 @@
 ; ============================================================================
 
 #define MyAppName "Video Merger"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.2.0"
 #define MyAppExeName "VideoMerger.exe"
 #define MyAppPublisher "Video Merger"
 
@@ -70,6 +70,11 @@ Name: "desktopicon"; Description: "Buat ikon di Desktop"; GroupDescription: "Pin
 
 [Files]
 Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; Berkas .config menyatakan runtime yang dibutuhkan (.NET Framework 4.8).
+; Tanpa itu, di komputer yang hanya punya 4.0-4.7 aplikasinya tetap mulai lalu
+; gagal di tengah dengan galat yang tidak menjelaskan apa pun; dengan itu
+; Windows bisa melaporkan runtime-nya kurang. 174 byte.
+Source: "..\dist\{#MyAppExeName}.config"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; DestName: "Panduan.md"; Flags: ignoreversion isreadme
 #ifdef BundleFFmpeg
 ; Ditempatkan di {app}\ffmpeg - salah satu folder pertama yang dicari

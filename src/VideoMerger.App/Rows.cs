@@ -90,6 +90,18 @@ namespace VideoMerger.App
         }
 
         public string Status => File.Valid ? "" : File.Error;
+
+        private bool _willReencode;
+        /// <summary>
+        /// Klip ini berbeda dari mayoritas, jadi akan di-encode ulang saat
+        /// digabung (mode Otomatis/Hemat). Dipakai untuk mewarnai barisnya -
+        /// tidak berlaku pada baris rusak, yang punya warnanya sendiri.
+        /// </summary>
+        public bool WillReencode
+        {
+            get { return _willReencode; }
+            set { if (_willReencode != value) { _willReencode = value; Raise(); } }
+        }
     }
 
     /// <summary>Satu baris pada tab "Subtitle Permanen".</summary>

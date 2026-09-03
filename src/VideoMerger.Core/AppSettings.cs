@@ -28,6 +28,7 @@ namespace VideoMerger.Core
             {
                 { "last_input_dir", "" },
                 { "last_output_dir", "" },
+                { "recent_input_dirs", "" },
                 { "recursive", "false" },
                 { "sort_key", "Name" },
                 { "sort_desc", "false" },
@@ -66,6 +67,7 @@ namespace VideoMerger.Core
                 // -- hardsub -------------------------------------------------
                 { "hardsub_input_dir", "" },
                 { "hardsub_output_dir", "" },
+                { "recent_hardsub_dirs", "" },
                 { "hardsub_suffix", " - hardsub" },
                 { "hardsub_container", ".mp4" },
                 // Lebih rendah dari bawaan penggabungan dengan sengaja: tepi

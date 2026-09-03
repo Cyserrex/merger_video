@@ -15,10 +15,10 @@ Ada dua cara, keduanya sah:
 
 | Berkas | Untuk siapa |
 |---|---|
-| **`VideoMerger-1.1.0-Setup.exe`** — installer | Pemakaian biasa. Membuat pintasan Start Menu / Desktop, terdaftar di *Apps & features*, bisa dihapus rapi. Bisa dipasang **tanpa hak administrator** — pilih "Pasang hanya untuk saya". |
-| **`VideoMerger.exe`** — satu file 375 KB, tanpa pasang | Dijalankan dari flashdisk atau folder jaringan, atau di PC yang melarang pemasangan. Tinggal klik dua kali. |
+| **`VideoMerger-1.2.0-Setup.exe`** — installer | Pemakaian biasa. Membuat pintasan Start Menu / Desktop, terdaftar di *Apps & features*, bisa dihapus rapi. Bisa dipasang **tanpa hak administrator** — pilih "Pasang hanya untuk saya". |
+| **`VideoMerger.exe`** — satu file 383 KB, tanpa pasang | Dijalankan dari flashdisk atau folder jaringan, atau di PC yang melarang pemasangan. Tinggal klik dua kali. |
 
-Keduanya tersedia di [halaman Releases](../../releases). Installernya 2,6 MB.
+Keduanya tersedia di [halaman Releases](../../releases). Installernya 2,5 MB.
 
 > Aplikasi ini belum ditandatangani secara digital, jadi Windows SmartScreen mungkin
 > menampilkan peringatan saat pertama dijalankan. Klik **More info → Run anyway**.
@@ -64,6 +64,35 @@ Keluaran bisa `.mp4`, `.mkv`, `.mov`, `.ts`, `.avi`, `.webm`, `.flv`, `.mpg`.
 Kalau semua video punya format identik (kasus paling umum: satu kamera, satu pengaturan),
 penggabungan berjalan **tanpa encode ulang** — 100 video berdurasi total 8 jam selesai
 dalam hitungan menit, dan kualitasnya sama persis dengan aslinya.
+
+### Sebelum menekan tombol: perkiraan dan penanda
+
+Baris ringkasan di bawah daftar menyebut **jumlah video, total durasi, dan total
+ukuran** yang dipilih, lalu — kalau ada minimal dua video — apakah semuanya **dapat
+digabung cepat** atau **perlu encode ulang**, berikut **perkiraan ukuran hasil** dan
+**perkiraan lama proses**. Perkiraan waktu untuk encode ulang dihitung dari kecepatan
+encoder yang sudah diukur di mesin ini (lihat *Encoder dipilih dengan diukur* di
+bawah), diskalakan ke resolusi keluaran — jadi bukan tebakan, walau tetap perkiraan
+dan diberi tanda `~`.
+
+Di dalam daftar, baris diberi warna menurut keadaannya:
+
+| Warna | Arti |
+|---|---|
+| Merah muda | Berkas rusak / bukan video / belum diperiksa — dilewati, tidak bisa dicentang. |
+| Kuning pucat | Berbeda dari mayoritas; klip inilah yang akan di-encode ulang saat digabung. |
+| Redup | Baris yang centangnya dilepas — tidak ikut digabung. |
+
+Kotak **Folder video** punya tombol **Riwayat ▾** yang menurunkan delapan folder
+terakhir yang pernah dipakai, supaya tidak perlu menelusuri ulang setiap kali.
+
+Sebelum proses dimulai, aplikasi memperingatkan kalau **ruang disk tujuan mungkin
+tidak cukup**, atau kalau tujuannya berformat **FAT32** yang tidak bisa menampung satu
+berkas lebih dari 4 GB — keduanya masih bisa dilanjutkan kalau memang disengaja.
+
+Selama proses berjalan, **kemajuannya ikut tampil di ikon taskbar**; begitu selesai
+(atau gagal), tombol taskbar **berkedip** kalau jendelanya sedang tidak di depan —
+karena penggabungan berjam-jam hampir pasti ditinggal mengerjakan hal lain.
 
 ---
 
@@ -394,7 +423,7 @@ build.bat          REM bangun saja
 build.bat test     REM bangun lalu jalankan 133 tes
 ```
 
-Hasilnya `dist\VideoMerger.exe`, **satu berkas 375 KB**.
+Hasilnya `dist\VideoMerger.exe`, **satu berkas 383 KB**.
 
 `VideoMerger.Core.dll` ditanam ke dalam exe sebagai *embedded resource* dan dimuat
 lewat `AssemblyResolve`, supaya menyalin exe-nya sendirian ke flashdisk tetap
@@ -409,7 +438,7 @@ di sini:
   pemuatannya terjadi sebelum `AssemblyResolve` sempat terpasang.
 
 FFmpeg sengaja **tidak** dibundel: `ffmpeg.exe` build lengkap berukuran 217 MB,
-sehingga aplikasi 375 KB akan membengkak jadi ratusan MB.
+sehingga aplikasi 383 KB akan membengkak jadi ratusan MB.
 
 ### Membuat installer
 
@@ -421,7 +450,7 @@ build_installer.bat
 ```
 
 Skrip ini membangun exe-nya dulu, lalu mengompilasi
-`installer\Output\VideoMerger-1.1.0-Setup.exe` (±12 MB). Inno Setup dicari di
+`installer\Output\VideoMerger-1.2.0-Setup.exe` (±2,5 MB). Inno Setup dicari di
 Program Files maupun di `%LOCALAPPDATA%\Programs` (lokasi yang dipakai winget kalau
 dipasang tanpa hak admin), jadi tidak perlu ada di PATH.
 
@@ -437,7 +466,7 @@ Set `VMERGE_NOPAUSE=1` supaya skrip tidak berhenti menunggu tombol (dipakai CI).
 Uji installer tanpa mengklik apa pun:
 
 ```bat
-VideoMerger-1.1.0-Setup.exe /VERYSILENT /CURRENTUSER /DIR=C:\uji\vm
+VideoMerger-1.2.0-Setup.exe /VERYSILENT /CURRENTUSER /DIR=C:\uji\vm
 C:\uji\vm\unins000.exe /VERYSILENT
 ```
 
@@ -502,7 +531,8 @@ Preferensi pengguna disimpan di `%APPDATA%\vmerge\settings.json`.
   sehingga ikut dilewati.
 - Setiap sambungan menambah selisih beberapa milidetik. Pada 100 file, total selisihnya
   beberapa detik dari video 8 jam — tidak terasa, tapi bukan nol.
-- Drive tujuan berformat FAT32 tidak bisa menampung file lebih dari 4 GB. Pakai NTFS
+- Drive tujuan berformat FAT32 tidak bisa menampung file lebih dari 4 GB. Aplikasi
+  memperingatkan sebelum mulai kalau perkiraan hasilnya melewati batas itu; pakai NTFS
   atau exFAT untuk hasil berdurasi panjang.
 - Menyimpan hasil sebagai **`.mkv`** dari sumber MP4 memunculkan peringatan
   "non monotonic DTS" di setiap sambungan. Filenya tetap utuh dan bisa diputar; ini

@@ -4,13 +4,17 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Shell;
 using System.Windows.Threading;
 using VideoMerger.Core;
 
@@ -60,6 +64,10 @@ namespace VideoMerger.App
         // belum pernah diukur di sesi ini.
         private List<EncoderScore> _benchScores;
         private bool _benchRunning;
+        // Kedua kotak encoder (tab Gabungkan & tab Subtitle) menampilkan
+        // pilihan yang sama; bendera ini mencegah sinkronisasi keduanya saling
+        // memicu tanpa henti.
+        private bool _syncingEncoder;
         // Pembatalan milik benchmark sendiri, terpisah dari _scanCancel:
         // pemindaian folder mengganti _scanCancel dengan yang baru setiap kali
         // dijalankan, yang akan membuat token milik benchmark jadi yatim -
@@ -286,6 +294,7 @@ namespace VideoMerger.App
 
             _benchRunning = true;
             BtnBenchmark.IsEnabled = false;
+            BtnSubBenchmark.IsEnabled = false;
             // Selama mengukur, memulai pekerjaan harus ditahan. Kalau tidak,
             // ffmpeg milik penggabungan berebut CPU dengan ffmpeg milik
             // pengukuran, dan angkanya jadi salah - terukur di mesin uji:
@@ -300,11 +309,11 @@ namespace VideoMerger.App
             // Kotak yang benar-benar kosong terbaca sebagai aplikasi rusak,
             // bukan sebagai sesuatu yang sedang bekerja.
             CmbEncoder.SelectionChanged -= OnEncoderChanged;
-            CmbEncoder.Items.Clear();
-            CmbEncoder.Items.Add("Mengukur kecepatan...");
-            CmbEncoder.SelectedIndex = 0;
-            CmbEncoder.IsEnabled = false;
+            CmbSubEncoder.SelectionChanged -= OnSubEncoderChanged;
+            SetEncoderMeasuring(CmbEncoder);
+            SetEncoderMeasuring(CmbSubEncoder);
             CmbEncoder.SelectionChanged += OnEncoderChanged;
+            CmbSubEncoder.SelectionChanged += OnSubEncoderChanged;
 
             _benchCancel = new CancellationTokenSource();
             var token = _benchCancel.Token;
@@ -326,6 +335,7 @@ namespace VideoMerger.App
                 {
                     _benchRunning = false;
                     BtnBenchmark.IsEnabled = true;
+                    BtnSubBenchmark.IsEnabled = true;
                     BtnCancel.IsEnabled = _busy;
                     UpdateActionButton();
 
@@ -442,25 +452,9 @@ namespace VideoMerger.App
                     _encoderChoices.Add(Tuple.Create(candidate.Id, candidate.Label));
 
             CmbEncoder.SelectionChanged -= OnEncoderChanged;
-            CmbEncoder.Items.Clear();
-            foreach (var choice in _encoderChoices)
-            {
-                // ComboBoxItem, bukan string biasa: encoder yang sudah TERBUKTI
-                // gagal saat diukur tetap ditampilkan - menghilangkannya bikin
-                // orang bertanya "kenapa AMD tidak ada?" - tetapi tidak boleh
-                // bisa dipilih. `ffmpeg -encoders` mendaftarkan h264_amf di
-                // komputer tanpa GPU AMD sekalipun.
-                string scoreId = choice.Item1 == "" ? "libx264" : choice.Item1;
-                var score = ScoreOf(scoreId);
-                CmbEncoder.Items.Add(new ComboBoxItem
-                {
-                    Content = choice.Item1 == "__auto__"
-                        ? (object)choice.Item2
-                        : EncoderItemContent(scoreId, choice.Item2),
-                    IsEnabled = choice.Item1 == "__auto__"
-                                || score == null || score.Works,
-                });
-            }
+            CmbSubEncoder.SelectionChanged -= OnSubEncoderChanged;
+            FillEncoderCombo(CmbEncoder);
+            FillEncoderCombo(CmbSubEncoder);
 
             string saved = _settings.GetBool("encoder_auto")
                 ? "__auto__" : _settings["hwaccel_encoder"];
@@ -473,12 +467,53 @@ namespace VideoMerger.App
                 var savedItem = CmbEncoder.Items[index] as ComboBoxItem;
                 if (savedItem != null && !savedItem.IsEnabled) index = 0;
             }
-            CmbEncoder.SelectedIndex = index >= 0 ? index : 0;
+            if (index < 0) index = 0;
+            CmbEncoder.SelectedIndex = index;
+            CmbSubEncoder.SelectedIndex = index;
             CmbEncoder.IsEnabled = true;
+            CmbSubEncoder.IsEnabled = true;
             CmbEncoder.SelectionChanged += OnEncoderChanged;
+            CmbSubEncoder.SelectionChanged += OnSubEncoderChanged;
 
             LblEncoderNote.Text = EncoderNote();
             LblEncoderNote.ToolTip = LblEncoderNote.Text;
+        }
+
+        /// <summary>
+        /// Isi satu kotak encoder dari daftar pilihan yang sudah dibangun. Item
+        /// dibuat baru tiap panggilan karena satu elemen visual hanya boleh
+        /// punya satu induk - kedua kotak (tab Gabungkan &amp; tab Subtitle) tidak
+        /// bisa berbagi ComboBoxItem yang sama.
+        /// </summary>
+        private void FillEncoderCombo(ComboBox combo)
+        {
+            combo.Items.Clear();
+            foreach (var choice in _encoderChoices)
+            {
+                // ComboBoxItem, bukan string biasa: encoder yang sudah TERBUKTI
+                // gagal saat diukur tetap ditampilkan - menghilangkannya bikin
+                // orang bertanya "kenapa AMD tidak ada?" - tetapi tidak boleh
+                // bisa dipilih.
+                string scoreId = choice.Item1 == "" ? "libx264" : choice.Item1;
+                var score = ScoreOf(scoreId);
+                combo.Items.Add(new ComboBoxItem
+                {
+                    Content = choice.Item1 == "__auto__"
+                        ? (object)choice.Item2
+                        : EncoderItemContent(scoreId, choice.Item2),
+                    IsEnabled = choice.Item1 == "__auto__"
+                                || score == null || score.Works,
+                });
+            }
+        }
+
+        /// <summary>Tampilkan keadaan "sedang mengukur" pada satu kotak encoder.</summary>
+        private static void SetEncoderMeasuring(ComboBox combo)
+        {
+            combo.Items.Clear();
+            combo.Items.Add("Mengukur kecepatan...");
+            combo.SelectedIndex = 0;
+            combo.IsEnabled = false;
         }
 
         /// <summary>Keterangan ringkas di samping kotak pilihan.</summary>
@@ -515,9 +550,29 @@ namespace VideoMerger.App
 
         private void OnEncoderChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (_loading) return;
-            int index = CmbEncoder.SelectedIndex;
+            if (_loading || _syncingEncoder) return;
+            ApplyEncoderIndex(CmbEncoder.SelectedIndex, CmbSubEncoder);
+        }
+
+        private void OnSubEncoderChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_loading || _syncingEncoder) return;
+            ApplyEncoderIndex(CmbSubEncoder.SelectedIndex, CmbEncoder);
+        }
+
+        /// <summary>
+        /// Simpan pilihan encoder lalu cerminkan ke kotak satunya. Kedua tab
+        /// memakai encoder yang sama, jadi mengubahnya di mana pun langsung
+        /// tampak di keduanya. Bendera _syncingEncoder mencegah pantulan balik.
+        /// </summary>
+        private void ApplyEncoderIndex(int index, ComboBox mirror)
+        {
             if (index < 0 || index >= _encoderChoices.Count) return;
+
+            _syncingEncoder = true;
+            try { if (mirror.SelectedIndex != index) mirror.SelectedIndex = index; }
+            finally { _syncingEncoder = false; }
+
             string id = _encoderChoices[index].Item1;
             _settings.Set("encoder_auto", id == "__auto__");
             if (id != "__auto__") _settings.Set("hwaccel_encoder", id);
@@ -796,6 +851,47 @@ namespace VideoMerger.App
             try { System.Media.SystemSounds.Beep.Play(); } catch (Exception) { }
         }
 
+        /// <summary>
+        /// Kedipkan tombol taskbar kalau jendela sedang tidak di depan. Proses
+        /// bisa berjam-jam dan penggunanya hampir pasti sudah pindah ke
+        /// pekerjaan lain; tanpa ini "selesai" hanya terjadi di jendela yang
+        /// tidak sedang dilihat. FLASHW_TIMERNOFG membuatnya berkedip sampai
+        /// jendelanya dibuka, lalu berhenti sendiri.
+        /// </summary>
+        private void FlashIfBackground()
+        {
+            try
+            {
+                if (IsActive) return;
+                var info = new FLASHWINFO
+                {
+                    cbSize = (uint)Marshal.SizeOf(typeof(FLASHWINFO)),
+                    hwnd = new WindowInteropHelper(this).Handle,
+                    dwFlags = FLASHW_ALL | FLASHW_TIMERNOFG,
+                    uCount = uint.MaxValue,
+                    dwTimeout = 0,
+                };
+                FlashWindowEx(ref info);
+            }
+            catch (Exception) { }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FLASHWINFO
+        {
+            public uint cbSize;
+            public IntPtr hwnd;
+            public uint dwFlags;
+            public uint uCount;
+            public uint dwTimeout;
+        }
+
+        private const uint FLASHW_ALL = 3;
+        private const uint FLASHW_TIMERNOFG = 12;
+
+        [DllImport("user32.dll")]
+        private static extern bool FlashWindowEx(ref FLASHWINFO pwfi);
+
         private void OnFolderKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter) Rescan();
@@ -809,6 +905,104 @@ namespace VideoMerger.App
         }
 
         private void OnRescan(object sender, RoutedEventArgs e) => Rescan();
+
+        // ------------------------------------------------ riwayat folder --
+        /// <summary>Folder yang baru dipakai, terbaru di depan.</summary>
+        private List<string> GetRecent(string key)
+        {
+            var list = new List<string>();
+            // '|' mustahil muncul di jalur Windows, jadi aman jadi pemisah.
+            foreach (var part in (_settings[key] ?? "").Split('|'))
+            {
+                string p = part.Trim();
+                if (p.Length > 0 && !list.Contains(p, StringComparer.OrdinalIgnoreCase))
+                    list.Add(p);
+            }
+            return list;
+        }
+
+        private void PushRecent(string key, string folder)
+        {
+            if (string.IsNullOrWhiteSpace(folder)) return;
+            folder = folder.Trim();
+            var list = GetRecent(key);
+            list.RemoveAll(p => string.Equals(p, folder, StringComparison.OrdinalIgnoreCase));
+            list.Insert(0, folder);
+            while (list.Count > 8) list.RemoveAt(list.Count - 1);
+            _settings.Set(key, string.Join("|", list));
+            _settings.Save();
+        }
+
+        private void OnShowRecent(object sender, RoutedEventArgs e)
+            => ShowRecentMenu(BtnRecent, "recent_input_dirs", false);
+
+        private void OnShowRecentSub(object sender, RoutedEventArgs e)
+            => ShowRecentMenu(BtnRecentSub, "recent_hardsub_dirs", true);
+
+        /// <summary>
+        /// Turunkan daftar folder terakhir sebagai menu di bawah tombolnya.
+        /// Dibangun di sini, bukan di XAML, supaya isinya bisa disaring dari
+        /// folder yang sudah tidak ada tanpa menyeret satu kontrol per tab.
+        /// </summary>
+        private void ShowRecentMenu(Button anchor, string key, bool sub)
+        {
+            if (BusyGuard()) return;
+            var folders = GetRecent(key);
+            folders.RemoveAll(f => !Directory.Exists(f));
+            if (folders.Count == 0)
+            {
+                MessageBox.Show("Belum ada folder yang tercatat.", AppInfo.Name,
+                                MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var panel = new StackPanel();
+            var popup = new Popup
+            {
+                PlacementTarget = anchor,
+                Placement = PlacementMode.Bottom,
+                StaysOpen = false,
+                AllowsTransparency = true,
+                PopupAnimation = PopupAnimation.None,
+                Child = new Border
+                {
+                    Background = (Brush)FindResource("Card"),
+                    BorderBrush = (Brush)FindResource("BorderBrushSoft"),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(3),
+                    Child = panel,
+                },
+            };
+
+            foreach (string folder in folders)
+            {
+                string chosen = folder;
+                var item = new Button
+                {
+                    Style = (Style)FindResource("BtnLink"),
+                    Foreground = (Brush)FindResource("Text"),
+                    HorizontalContentAlignment = HorizontalAlignment.Left,
+                    Padding = new Thickness(10, 6, 10, 6),
+                    ToolTip = folder,
+                    Content = new TextBlock
+                    {
+                        Text = folder,
+                        TextTrimming = TextTrimming.CharacterEllipsis,
+                        MaxWidth = 520,
+                    },
+                };
+                item.Click += (s, e2) =>
+                {
+                    popup.IsOpen = false;
+                    if (sub) { TxtSubFolder.Text = chosen; SubRescan(); }
+                    else { TxtFolder.Text = chosen; Rescan(); }
+                };
+                panel.Children.Add(item);
+            }
+
+            popup.IsOpen = true;
+        }
 
         private void OnChooseFiles(object sender, RoutedEventArgs e)
         {
@@ -947,7 +1141,11 @@ namespace VideoMerger.App
             // adalah kejutan yang tidak perlu.
             TxtFolder.Text = "";
             if (!string.IsNullOrEmpty(folderHint))
+            {
                 _settings.Set("last_input_dir", folderHint);
+                if (Directory.Exists(folderHint))
+                    PushRecent("recent_input_dirs", folderHint);
+            }
 
             _rows.Clear();
             _scanCancel = new CancellationTokenSource();
@@ -985,6 +1183,7 @@ namespace VideoMerger.App
             _settings.Set("last_input_dir", folder);
             _settings.Set("recursive", ChkRecursive.IsChecked == true);
             _settings.Save();
+            PushRecent("recent_input_dirs", folder);
 
             _scanCancel = new CancellationTokenSource();
             var token = _scanCancel.Token;
@@ -1269,21 +1468,145 @@ namespace VideoMerger.App
 
         private void UpdateSummary()
         {
-            var chosen = _rows.Where(r => r.Selected && r.File.Valid)
-                              .Select(r => r.File).ToList();
+            var chosenRows = _rows.Where(r => r.Selected && r.File.Valid).ToList();
+            var chosen = chosenRows.Select(r => r.File).ToList();
             double total = chosen.Sum(f => f.Duration);
             long size = chosen.Sum(f => f.Size);
             string text = chosen.Count + " video dipilih  |  total "
                           + Humanize.Duration(total) + "  |  " + Humanize.Size(size);
+
+            bool copyable = false;
             if (chosen.Count >= 2)
             {
                 List<string> reasons;
-                bool ok = Prober.CanStreamCopy(chosen, out reasons);
-                text += "  |  " + (ok ? "dapat digabung cepat (tanpa encode ulang)"
-                                      : "perlu encode ulang");
+                copyable = Prober.CanStreamCopy(chosen, out reasons);
+                text += "  |  " + (copyable ? "dapat digabung cepat (tanpa encode ulang)"
+                                            : "perlu encode ulang");
+
+                MergeMode effective = EffectiveMode(copyable);
+                long estBytes = Merger.EstimateOutputBytes(chosen, effective);
+                text += "  |  perkiraan hasil ~" + Humanize.Size(estBytes);
+                string time = EstimateProcessTime(chosen, total, effective);
+                if (!string.IsNullOrEmpty(time)) text += ", ~" + time;
             }
             LblSummary.Text = text;
+            MarkReencodeRows(chosenRows, copyable);
             UpdateEmptyStates();
+        }
+
+        /// <summary>Mode yang benar-benar akan dipakai, setelah "Otomatis" dibaca.</summary>
+        private MergeMode EffectiveMode(bool copyable)
+        {
+            MergeMode mode = SelectedMode();
+            if (mode == MergeMode.Auto) return copyable ? MergeMode.Copy : MergeMode.Smart;
+            return mode;
+        }
+
+        /// <summary>
+        /// Tandai baris yang akan di-encode ulang: klip yang berbeda dari
+        /// mayoritas. Hanya saat penggabungan memang tidak bisa menyalin -
+        /// kalau semua seragam, tidak ada yang perlu diwarnai.
+        /// </summary>
+        private void MarkReencodeRows(List<MergeRow> chosenRows, bool copyable)
+        {
+            string majority = null;
+            if (!copyable && chosenRows.Count >= 2)
+                majority = Merger.MajoritySignature(chosenRows.Select(r => r.File).ToList());
+
+            foreach (var row in _rows)
+                row.WillReencode = majority != null
+                                   && row.Selected && row.File.Valid
+                                   && row.File.CopySignature() != majority;
+        }
+
+        /// <summary>Kecepatan (fps di 720p) encoder yang dipilih, 0 kalau tak terukur.</summary>
+        private double SelectedEncoderFps()
+        {
+            string id = SelectedEncoder();          // "" = CPU (libx264)
+            var score = ScoreOf(string.IsNullOrEmpty(id) ? "libx264" : id);
+            if (score != null && score.Works) return score.Fps;
+            return FastestFps();
+        }
+
+        /// <summary>
+        /// Perkiraan kasar lama proses. Untuk encode ulang dihitung dari
+        /// kecepatan encoder yang SUDAH diukur (di 720p) lalu diskalakan ke
+        /// jumlah piksel keluaran - jadi berdasar, walau tetap perkiraan. Untuk
+        /// mode cepat, waktunya ditentukan kecepatan disk yang tidak terukur di
+        /// sini, jadi dipakai angka konservatif ~40 MB/s. Mengembalikan string
+        /// kosong kalau datanya belum cukup.
+        /// </summary>
+        private string EstimateProcessTime(List<VideoFile> files, double totalDuration,
+                                           MergeMode effective)
+        {
+            if (effective == MergeMode.Copy)
+            {
+                long bytes = files.Sum(f => f.Size);
+                if (bytes <= 0) return "";
+                return Humanize.Eta(bytes / (40.0 * 1024 * 1024));
+            }
+
+            double fps720 = SelectedEncoderFps();
+            if (fps720 <= 0 || totalDuration <= 0) return "";
+
+            int w, h; double outFps;
+            Merger.EstimateGeometry(files, out w, out h, out outFps);
+            double refPixels = 1280.0 * 720.0;            // resolusi benchmark
+            double outPixels = Math.Max(1.0, (double)w * h);
+            // Throughput piksel/detik dianggap tetap; fps encode berbanding
+            // terbalik dengan jumlah piksel per frame.
+            double effFps = fps720 * (refPixels / outPixels);
+            if (effFps <= 0) return "";
+            double encodeSeconds = totalDuration * (outFps / effFps);
+            // Tambahan kecil untuk baca/tulis dan penyambungan.
+            return Humanize.Eta(encodeSeconds * 1.15);
+        }
+
+        /// <summary>
+        /// Peringatan dini sebelum proses panjang: ruang disk tujuan dan batas
+        /// 4 GB per berkas pada FAT32. `totalBytes` = ruang yang dipakai saat
+        /// puncak; `perFileBytes` = perkiraan berkas keluaran terbesar (batas
+        /// FAT32 berlaku per berkas). Mengembalikan false kalau pengguna
+        /// membatalkan. Mesin di Core tetap memeriksa ulang saat jalan - ini
+        /// hanya memindahkan kabar buruknya ke sebelum tombol ditekan.
+        /// </summary>
+        private bool ConfirmDiskSpace(string targetDir, long totalBytes, long perFileBytes)
+        {
+            if (string.IsNullOrWhiteSpace(targetDir)) return true;
+
+            long free = Paths.DiskFree(targetDir);
+            if (free > 0 && totalBytes > free)
+            {
+                double needGb = totalBytes / 1073741824.0;
+                double freeGb = free / 1073741824.0;
+                if (MessageBox.Show(
+                        "Ruang disk tujuan kemungkinan tidak cukup.\n\n"
+                        + "Perkiraan dibutuhkan: "
+                        + needGb.ToString("0.0", CultureInfo.InvariantCulture) + " GB\n"
+                        + "Tersedia: "
+                        + freeGb.ToString("0.0", CultureInfo.InvariantCulture) + " GB\n\n"
+                        + "Tetap lanjutkan?", AppInfo.Name,
+                        MessageBoxButton.YesNo, MessageBoxImage.Warning)
+                    != MessageBoxResult.Yes)
+                    return false;
+            }
+
+            string fmt = Paths.DriveFormat(targetDir);
+            bool isFat = fmt.IndexOf("FAT", StringComparison.OrdinalIgnoreCase) >= 0
+                         && fmt.IndexOf("exFAT", StringComparison.OrdinalIgnoreCase) < 0;
+            if (isFat && perFileBytes > 4L * 1024 * 1024 * 1024)
+            {
+                if (MessageBox.Show(
+                        "Drive tujuan berformat " + fmt + ", yang tidak bisa menyimpan "
+                        + "satu berkas lebih dari 4 GB.\n\nPerkiraan berkas hasil ~"
+                        + Humanize.Size(perFileBytes) + " kemungkinan besar gagal di "
+                        + "tengah proses. Simpan ke drive NTFS atau exFAT.\n\n"
+                        + "Tetap lanjutkan?", AppInfo.Name,
+                        MessageBoxButton.YesNo, MessageBoxImage.Warning)
+                    != MessageBoxResult.Yes)
+                    return false;
+            }
+            return true;
         }
 
         private void OnChooseOutput(object sender, RoutedEventArgs e)
@@ -1385,6 +1708,14 @@ namespace VideoMerger.App
                    != MessageBoxResult.Yes)
                 return;
 
+            MergeMode estMode = (mode == MergeMode.Copy || (mode == MergeMode.Auto && copyable))
+                ? MergeMode.Copy : MergeMode.Reencode;
+            long peakNeed = Merger.PeakDiskNeed(chosen, estMode);
+            long singleFile = Merger.EstimateOutputBytes(chosen, estMode);
+            if (!ConfirmDiskSpace(Path.GetDirectoryName(Path.GetFullPath(output)) ?? "",
+                                  peakNeed, singleFile))
+                return;
+
             int crf = CrfValue(TxtCrf, "crf");
             // Pilihan encoder disimpan oleh OnEncoderChanged, bukan di sini.
             // Menyimpannya sekarang akan menulis hasil "Otomatis" ke dalam
@@ -1438,6 +1769,7 @@ namespace VideoMerger.App
             Bar.Value = 1000;
             BtnOpen.IsEnabled = true;
             _resultPath = path;
+            FlashIfBackground();
             long size = File.Exists(path) ? new FileInfo(path).Length : 0;
             if (MessageBox.Show("Penggabungan selesai.\n\n" + path + "\nUkuran: "
                                 + Humanize.Size(size) + "\n\nBuka folder hasil sekarang?",
@@ -1490,6 +1822,7 @@ namespace VideoMerger.App
 
             _settings.Set("hardsub_input_dir", folder);
             _settings.Save();
+            PushRecent("recent_hardsub_dirs", folder);
 
             var found = Scanner.ScanFolder(folder, false);
             if (found.Count == 0)
@@ -1555,11 +1888,20 @@ namespace VideoMerger.App
         private void UpdateSubSummary()
         {
             var chosen = _subRows.Where(r => r.Selected).ToList();
-            double total = chosen.Sum(r => r.Item.Video.Duration);
-            long size = chosen.Sum(r => r.Item.Video.Size);
-            LblSubSummary.Text = chosen.Count + " video dipilih  |  "
+            var videos = chosen.Select(r => r.Item.Video).ToList();
+            double total = videos.Sum(f => f.Duration);
+            long size = videos.Sum(f => f.Size);
+            string text = chosen.Count + " video dipilih  |  "
                 + Humanize.Duration(total) + "  |  " + Humanize.Size(size)
                 + "  |  selalu encode ulang";
+            if (chosen.Count >= 1)
+            {
+                long estBytes = Merger.EstimateOutputBytes(videos, MergeMode.Reencode);
+                text += "  |  perkiraan hasil ~" + Humanize.Size(estBytes);
+                string time = EstimateProcessTime(videos, total, MergeMode.Reencode);
+                if (!string.IsNullOrEmpty(time)) text += ", ~" + time;
+            }
+            LblSubSummary.Text = text;
             UpdateEmptyStates();
         }
 
@@ -1829,6 +2171,16 @@ namespace VideoMerger.App
                    != MessageBoxResult.Yes)
                 return;
 
+            var subVideos = chosen.Select(i => i.Video).ToList();
+            long subPeak = Merger.EstimateOutputBytes(subVideos, MergeMode.Reencode);
+            long subBiggest = subVideos.Count == 0 ? 0
+                : subVideos.Max(v => Merger.EstimateOutputBytes(
+                    new List<VideoFile> { v }, MergeMode.Reencode));
+            string subDir = !string.IsNullOrEmpty(outDir)
+                ? outDir
+                : (Path.GetDirectoryName(chosen[0].Video.Path) ?? "");
+            if (!ConfirmDiskSpace(subDir, subPeak, subBiggest)) return;
+
             int crf = CrfValue(TxtSubCrf, "hardsub_crf");
             string encoder = SelectedEncoder();
             SaveSettings();
@@ -1888,6 +2240,7 @@ namespace VideoMerger.App
         {
             SetBusy(false, "Selesai.");
             Bar.Value = 1000;
+            FlashIfBackground();
             foreach (var row in _subRows) row.Refresh();
 
             if (result.Done.Count > 0)
@@ -1951,6 +2304,10 @@ namespace VideoMerger.App
         {
             SetBusy(false, "Gagal.");
             Bar.Value = 0;
+            // Ikon taskbar dibiarkan merah sampai pekerjaan berikutnya dimulai,
+            // supaya kegagalan yang terjadi saat jendela di latar tetap terlihat.
+            Taskbar.ProgressState = TaskbarItemProgressState.Error;
+            FlashIfBackground();
             MessageBox.Show(message, AppInfo.Name, MessageBoxButton.OK,
                             MessageBoxImage.Error);
         }
@@ -1967,6 +2324,21 @@ namespace VideoMerger.App
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 Bar.Value = Math.Max(0, Math.Min(1000, p.Fraction * 1000));
+                if (_busy)
+                {
+                    // Angka pecahan yang sudah diketahui digambar di ikon
+                    // taskbar; tahap tanpa persentase (memindai, memulai)
+                    // memakai bilah bergerak supaya taskbar tidak diam di nol.
+                    if (p.Fraction > 0)
+                    {
+                        Taskbar.ProgressState = TaskbarItemProgressState.Normal;
+                        Taskbar.ProgressValue = Math.Min(1.0, p.Fraction);
+                    }
+                    else
+                    {
+                        Taskbar.ProgressState = TaskbarItemProgressState.Indeterminate;
+                    }
+                }
                 if (!string.IsNullOrEmpty(p.Message)) LblStatus.Text = p.Message;
 
                 var bits = new List<string>();
@@ -2045,6 +2417,17 @@ namespace VideoMerger.App
             BtnCancel.IsEnabled = busy || _benchRunning;
             if (!string.IsNullOrEmpty(status)) LblStatus.Text = status;
             Mouse.OverrideCursor = busy ? Cursors.AppStarting : null;
+            if (busy)
+            {
+                Taskbar.ProgressState = TaskbarItemProgressState.Indeterminate;
+            }
+            else
+            {
+                // Sengaja None, bukan bilah penuh: jalur selesai/gagal/batal
+                // di bawah yang menyetel keadaan akhir taskbar.
+                Taskbar.ProgressState = TaskbarItemProgressState.None;
+                Taskbar.ProgressValue = 0;
+            }
         }
 
         private void OnClosing(object sender, System.ComponentModel.CancelEventArgs e)

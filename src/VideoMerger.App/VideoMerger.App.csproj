@@ -7,7 +7,7 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>VideoMerger</AssemblyName>
     <RootNamespace>VideoMerger.App</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <ApplicationIcon>..\..\assets\vmerge.ico</ApplicationIcon>
     <AssemblyTitle>Video Merger</AssemblyTitle>
     <Product>Video Merger</Product>

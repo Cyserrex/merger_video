@@ -316,6 +316,33 @@ namespace VideoMerger.Core
             }
         }
 
+        /// <summary>
+        /// Nama sistem berkas volume yang memuat `path` (mis. "NTFS", "FAT32",
+        /// "exFAT"), atau string kosong kalau tidak terbaca. Dipakai untuk
+        /// memperingatkan batas 4 GB per berkas pada FAT32 sebelum proses
+        /// panjang dimulai.
+        /// </summary>
+        public static string DriveFormat(string path)
+        {
+            try
+            {
+                string probe = Path.GetFullPath(path);
+                while (!string.IsNullOrEmpty(probe) && !Directory.Exists(probe))
+                {
+                    string parent = Path.GetDirectoryName(probe);
+                    if (string.IsNullOrEmpty(parent) || parent == probe) break;
+                    probe = parent;
+                }
+                string root = Path.GetPathRoot(probe);
+                if (string.IsNullOrEmpty(root)) return "";
+                return new DriveInfo(root).DriveFormat;
+            }
+            catch (Exception)
+            {
+                return "";
+            }
+        }
+
         /// <summary>Buka Explorer dengan berkasnya tersorot. Tidak pernah melempar.</summary>
         public static void RevealInExplorer(string path)
         {
