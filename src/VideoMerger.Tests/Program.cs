@@ -895,13 +895,38 @@ namespace VideoMerger.Tests
 
             // Cache hanya sah untuk sidik jari yang sama.
             var settings = new AppSettings();
-            EncoderBenchmark.StoreCache(settings, Tools, scores);
+            EncoderBenchmark.StoreCache(settings, Tools, scores, true);
             string best, detail;
             Check("hasil tersimpan terbaca kembali",
                   EncoderBenchmark.TryCached(settings, Tools, out best, out detail), "");
             settings.Set("encoder_bench_fingerprint", "perangkat-lain");
             Check("sidik jari berbeda membatalkan cache",
                   !EncoderBenchmark.TryCached(settings, Tools, out best, out detail), "");
+
+            // Hasil separuh jadi TIDAK BOLEH tersimpan. Cache-nya diikat ke
+            // sidik jari perangkat keras, jadi pemenang yang salah bertahan
+            // sampai GPU atau versi FFmpeg berubah - bisa berbulan-bulan, tanpa
+            // gejala apa pun yang terlihat pengguna.
+            var partial = new AppSettings();
+            EncoderBenchmark.StoreCache(partial, Tools, scores, false);
+            Check("pengukuran yang dibatalkan tidak ikut tersimpan",
+                  !EncoderBenchmark.TryCached(partial, Tools, out best, out detail),
+                  "hasil separuh jadi masuk cache");
+
+            // Pembatalan benar-benar memotong di tengah, bukan sekadar
+            // menandai: kalau tidak, menekan Batalkan tetap berarti menunggu
+            // seluruh kandidat selesai.
+            var clock = Stopwatch.StartNew();
+            var cut = EncoderBenchmark.Measure(Tools, new TargetSpec(), null,
+                                               () => true);
+            clock.Stop();
+            Check("pembatalan menghentikan pengukuran sebelum kandidat pertama",
+                  cut.Count == 0,
+                  cut.Count + " kandidat terlanjur diukur");
+            Check("pembatalan berlangsung seketika",
+                  clock.Elapsed.TotalSeconds < 2.0,
+                  clock.Elapsed.TotalSeconds.ToString("0.0",
+                      CultureInfo.InvariantCulture) + " detik");
         }
 
         private static void TestUpdateCheck()
@@ -936,6 +961,19 @@ namespace VideoMerger.Tests
             };
             Check("FFmpeg di folder aplikasi dianggap milik aplikasi",
                   FFmpegUpdater.IsManagedByApp(own), own.FFmpeg);
+
+            // Folder TETANGGA yang namanya kebetulan berawalan sama. Tanpa
+            // pemisah folder di ujung, perbandingan awalan ikut mencocokinya
+            // dan aplikasi menawarkan pembaruan otomatis untuk pemasangan yang
+            // bukan miliknya.
+            var sibling = new FFmpegTools
+            {
+                FFmpeg = FFmpegLocator.InstallDir() + "-manual"
+                         + Path.DirectorySeparatorChar + "bin"
+                         + Path.DirectorySeparatorChar + "ffmpeg.exe",
+            };
+            Check("folder tetangga berawalan sama BUKAN milik aplikasi",
+                  !FFmpegUpdater.IsManagedByApp(sibling), sibling.FFmpeg);
 
             // Inti dari cara aplikasi memperbarui FFmpeg milik alat lain:
             // salinannya sendiri TIDAK menimpa apa pun, ia hanya diletakkan di

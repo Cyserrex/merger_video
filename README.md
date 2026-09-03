@@ -197,6 +197,14 @@ ada" justru memperlambat di mesin ini.
 dijalankan mesin ini: `h264_amf` tetap terdaftar di komputer tanpa GPU AMD dan
 baru mati di frame pertama. Klik **Uji ulang** untuk mengukur lagi kapan saja.
 
+Selama pengukuran berjalan, tombol aksi ditahan sebentar. Bukan kehati-hatian
+berlebihan: kalau penggabungan dimulai bersamaan, kedua ffmpeg berebut CPU dan
+angkanya jadi salah — terukur di mesin uji, libx264 turun **71%** saat semua core
+sibuk sementara NVENC hanya 60%, sehingga pemenangnya berbalik. Hasil salah itu
+lalu **tersimpan** bersama sidik jari perangkat keras dan bertahan sampai GPU atau
+versi FFmpeg berubah. Tekan **Batalkan** kalau tidak mau menunggu; pengukuran yang
+dibatalkan tidak disimpan sama sekali.
+
 ### Sisa folder kerja dibersihkan sendiri
 
 Jalur normal — selesai, gagal, dibatalkan, jendela ditutup — selalu membuang
@@ -341,7 +349,7 @@ Lalu:
 
 ```bat
 build.bat          REM bangun saja
-build.bat test     REM bangun lalu jalankan 119 tes
+build.bat test     REM bangun lalu jalankan 126 tes
 ```
 
 Hasilnya `dist\VideoMerger.exe`, **satu berkas 367 KB**.
@@ -397,7 +405,7 @@ C:\uji\vm\unins000.exe /VERYSILENT
 dotnet run --project src\VideoMerger.Tests -c Release
 ```
 
-119 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
+126 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
 **membuktikan** kerusakannya nyata sebelum memeriksa bahwa aplikasi menolaknya.
 
 Tes hardsub-nya juga tidak percaya pada kode keluar: video sumbernya **hitam polos**,
@@ -434,7 +442,7 @@ src/
     Rows.cs                 pembungkus baris tabel (INotifyPropertyChanged)
     Cli.cs                  antarmuka baris perintah
     EmbeddedAssemblies.cs   memuat Core.dll dari dalam exe
-  VideoMerger.Tests/        119 tes, semuanya menjalankan FFmpeg sungguhan
+  VideoMerger.Tests/        126 tes, semuanya menjalankan FFmpeg sungguhan
 build.bat                   bangun exe
 build_installer.bat         bangun exe + installer
 installer/setup.iss         skrip Inno Setup

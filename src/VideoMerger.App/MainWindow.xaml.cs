@@ -57,6 +57,11 @@ namespace VideoMerger.App
         private string _autoEncoder = "";          // hasil benchmark, "" = CPU
         private string _benchDetail = "";
         private bool _benchRunning;
+        // Pembatalan milik benchmark sendiri, terpisah dari _scanCancel:
+        // pemindaian folder mengganti _scanCancel dengan yang baru setiap kali
+        // dijalankan, yang akan membuat token milik benchmark jadi yatim -
+        // tombol Batalkan lalu tidak menghentikan apa pun.
+        private CancellationTokenSource _benchCancel = new CancellationTokenSource();
 
         private readonly List<string> _pendingLog = new List<string>();
         private DispatcherTimer _logTimer;
@@ -261,6 +266,16 @@ namespace VideoMerger.App
 
             _benchRunning = true;
             BtnBenchmark.IsEnabled = false;
+            // Selama mengukur, memulai pekerjaan harus ditahan. Kalau tidak,
+            // ffmpeg milik penggabungan berebut CPU dengan ffmpeg milik
+            // pengukuran, dan angkanya jadi salah - terukur di mesin uji:
+            // libx264 turun 71% saat semua core sibuk sementara NVENC hanya
+            // 60%, sehingga pemenangnya berbalik. Hasil salah itu lalu
+            // TERSIMPAN bersama sidik jari perangkat keras dan bertahan sampai
+            // GPU atau versi FFmpeg berubah.
+            UpdateActionButton();
+            BtnCancel.IsEnabled = true;
+            LblStatus.Text = "Mengukur kecepatan encoder...";
             LblEncoderNote.Text = "Mengukur kecepatan encoder...";
             // Kotak yang benar-benar kosong terbaca sebagai aplikasi rusak,
             // bukan sebagai sesuatu yang sedang bekerja.
@@ -271,6 +286,9 @@ namespace VideoMerger.App
             CmbEncoder.IsEnabled = false;
             CmbEncoder.SelectionChanged += OnEncoderChanged;
 
+            _benchCancel = new CancellationTokenSource();
+            var token = _benchCancel.Token;
+
             Task.Run(() =>
             {
                 var listed = EncoderBenchmark.Listed(tools);
@@ -279,22 +297,43 @@ namespace VideoMerger.App
                     (done, total, label) => Dispatcher.BeginInvoke(new Action(() =>
                         LblEncoderNote.Text = "Mengukur " + (done + 1) + "/" + total
                                               + ": " + label + "..."),
-                        DispatcherPriority.Background));
+                        DispatcherPriority.Background),
+                    () => token.IsCancellationRequested);
+                bool complete = !token.IsCancellationRequested
+                                && scores.Count == listed.Count;
 
                 Dispatcher.Invoke(() =>
                 {
-                    EncoderBenchmark.StoreCache(_settings, tools, scores);
-                    _autoEncoder = EncoderBenchmark.Best(scores);
-                    var sb = new StringBuilder();
-                    foreach (var score in scores)
-                    {
-                        if (sb.Length > 0) sb.Append("; ");
-                        sb.Append(score.Describe());
-                    }
-                    _benchDetail = sb.ToString();
-                    BuildEncoderList(listed);
                     _benchRunning = false;
                     BtnBenchmark.IsEnabled = true;
+                    BtnCancel.IsEnabled = _busy;
+                    UpdateActionButton();
+
+                    EncoderBenchmark.StoreCache(_settings, tools, scores, complete);
+                    if (complete)
+                    {
+                        _autoEncoder = EncoderBenchmark.Best(scores);
+                        var sb = new StringBuilder();
+                        foreach (var score in scores)
+                        {
+                            if (sb.Length > 0) sb.Append("; ");
+                            sb.Append(score.Describe());
+                        }
+                        _benchDetail = sb.ToString();
+                    }
+                    else
+                    {
+                        // Dibatalkan: jangan memakai pemenang dari daftar
+                        // separuh jadi untuk sesi ini juga. Biarkan pilihan
+                        // bawaan (CPU) dan katakan apa adanya.
+                        _autoEncoder = "";
+                        _benchDetail = "Pengukuran dibatalkan - "
+                                       + "tekan \"Uji ulang\" untuk mencoba lagi.";
+                    }
+                    BuildEncoderList(listed);
+                    if (LblStatus.Text == "Mengukur kecepatan encoder..."
+                        || LblStatus.Text == "Membatalkan...")
+                        LblStatus.Text = "Siap.";
                 });
             });
         }
@@ -971,6 +1010,19 @@ namespace VideoMerger.App
         private void StartMerge()
         {
             if (_busy) return;
+            // Tombol aksinya sudah dimatikan selama pengukuran, tetapi jalur
+            // papan ketik dan pemanggil lain tetap bisa sampai ke sini.
+            if (_benchRunning)
+            {
+                MessageBox.Show(
+                    "Kecepatan encoder sedang diukur.\n\nMemulai sekarang "
+                    + "membuat hasil pengukurannya salah - dan hasil itu "
+                    + "tersimpan. Tunggu beberapa detik, atau tekan Batalkan "
+                    + "untuk melewati pengukuran.", AppInfo.Name,
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
             if (!EnsureFFmpeg()) return;
 
             // Pemindaian yang diinterupsi meninggalkan berkas yang belum
@@ -1422,6 +1474,19 @@ namespace VideoMerger.App
         private void StartHardsub()
         {
             if (_busy) return;
+            // Tombol aksinya sudah dimatikan selama pengukuran, tetapi jalur
+            // papan ketik dan pemanggil lain tetap bisa sampai ke sini.
+            if (_benchRunning)
+            {
+                MessageBox.Show(
+                    "Kecepatan encoder sedang diukur.\n\nMemulai sekarang "
+                    + "membuat hasil pengukurannya salah - dan hasil itu "
+                    + "tersimpan. Tunggu beberapa detik, atau tekan Batalkan "
+                    + "untuk melewati pengukuran.", AppInfo.Name,
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
             if (!EnsureFFmpeg()) return;
 
             var chosen = _subRows.Where(r => r.Selected).Select(r => r.Item).ToList();
@@ -1565,6 +1630,11 @@ namespace VideoMerger.App
         private void OnCancel(object sender, RoutedEventArgs e)
         {
             _scanCancel.Cancel();
+            // Pengukuran encoder punya pembatalannya sendiri; tanpa baris ini
+            // tombol Batalkan tidak berpengaruh selama benchmark berjalan, dan
+            // di laptop lama itu bisa berarti menunggu beberapa menit tanpa
+            // jalan keluar.
+            _benchCancel.Cancel();
             if (_task != null) _task.Cancel();
             LblStatus.Text = "Membatalkan...";
             BtnCancel.IsEnabled = false;
@@ -1655,11 +1725,23 @@ namespace VideoMerger.App
                 ? Visibility.Visible : Visibility.Collapsed;
         }
 
+        /// <summary>
+        /// Tombol aksi hidup hanya kalau tidak ada pekerjaan DAN tidak ada
+        /// pengukuran encoder yang sedang berjalan. Dipisah jadi satu tempat
+        /// karena dua keadaan itu berubah dari jalur yang berbeda, dan versi
+        /// sebelumnya membiarkan SetBusy(false) menghidupkan tombolnya kembali
+        /// di tengah pengukuran.
+        /// </summary>
+        private void UpdateActionButton()
+        {
+            BtnPrimary.IsEnabled = !_busy && !_benchRunning;
+        }
+
         private void SetBusy(bool busy, string status = "")
         {
             _busy = busy;
-            BtnPrimary.IsEnabled = !busy;
-            BtnCancel.IsEnabled = busy;
+            UpdateActionButton();
+            BtnCancel.IsEnabled = busy || _benchRunning;
             if (!string.IsNullOrEmpty(status)) LblStatus.Text = status;
             Mouse.OverrideCursor = busy ? Cursors.AppStarting : null;
         }

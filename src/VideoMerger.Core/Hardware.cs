@@ -71,7 +71,9 @@ namespace VideoMerger.Core
         public static string Summary()
         {
             var sb = new StringBuilder();
-            sb.Append(CoreCount).Append(CoreCount == 1 ? " core" : " core");
+            // "core" tidak dijamakkan dalam bahasa Indonesia, jadi tidak ada
+            // percabangan tunggal/jamak di sini.
+            sb.Append(CoreCount).Append(" core");
             var gpus = GpuNames();
             if (gpus.Count > 0) sb.Append("  -  ").Append(string.Join(", ", gpus));
             return sb.ToString();

@@ -38,7 +38,15 @@ namespace VideoMerger.Core
             if (tools == null || string.IsNullOrEmpty(tools.FFmpeg)) return false;
             try
             {
+                // Pemisah folder di ujung itu wajib. Tanpa itu perbandingan
+                // awalan ikut mencocoki folder TETANGGA yang namanya kebetulan
+                // berawalan sama: "...\vmerge\ffmpeg-manual\bin\ffmpeg.exe"
+                // akan dianggap milik aplikasi, lalu ditawari pembaruan
+                // otomatis yang sebenarnya memasang ke folder lain.
                 string own = Path.GetFullPath(FFmpegLocator.InstallDir());
+                if (!own.EndsWith(Path.DirectorySeparatorChar.ToString(),
+                                  StringComparison.Ordinal))
+                    own += Path.DirectorySeparatorChar;
                 string here = Path.GetFullPath(tools.FFmpeg);
                 return here.StartsWith(own, StringComparison.OrdinalIgnoreCase);
             }

@@ -233,9 +233,15 @@ namespace VideoMerger.Core
         }
 
         public static void StoreCache(AppSettings settings, FFmpegTools tools,
-                                      IList<EncoderScore> scores)
+                                      IList<EncoderScore> scores, bool complete)
         {
-            if (settings == null || tools == null) return;
+            // `complete` false berarti pengukurannya berhenti di tengah.
+            // Cache-nya diikat ke sidik jari perangkat keras, jadi pemenang
+            // yang disimpan dari daftar separuh jadi akan bertahan sampai GPU
+            // atau versi FFmpeg berubah - bisa berbulan-bulan - tanpa satu pun
+            // gejala yang terlihat pengguna. Lebih baik tidak menyimpan apa-apa
+            // dan mengukur ulang nanti.
+            if (settings == null || tools == null || !complete) return;
             var sb = new StringBuilder();
             foreach (var score in scores)
             {
