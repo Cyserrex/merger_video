@@ -38,9 +38,14 @@
     <Reference Include="System.Drawing" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Resource Include="..\..\assets\vmerge.ico" Link="assets\vmerge.ico" />
-  </ItemGroup>
+  <!--
+    Ikonnya TIDAK ikut sebagai Resource WPF. ApplicationIcon di atas sudah
+    menanamkannya sebagai ikon Win32, dan jendela WPF yang tidak menyetel
+    Icon= mengambil ikon exe-nya sendiri - jadi entri kedua hanya menggandakan
+    berkas 218 KB itu di dalam exe tanpa ada satu baris kode pun yang
+    memakainya. Peninggalan versi Tkinter, yang memang harus memuat .ico
+    sebagai berkas terpisah saat runtime.
+  -->
 
   <!--
     Tanam VideoMerger.Core.dll ke dalam exe supaya distribusinya tetap SATU

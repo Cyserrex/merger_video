@@ -16,9 +16,9 @@ Ada dua cara, keduanya sah:
 | Berkas | Untuk siapa |
 |---|---|
 | **`VideoMerger-1.1.0-Setup.exe`** — installer | Pemakaian biasa. Membuat pintasan Start Menu / Desktop, terdaftar di *Apps & features*, bisa dihapus rapi. Bisa dipasang **tanpa hak administrator** — pilih "Pasang hanya untuk saya". |
-| **`VideoMerger.exe`** — satu file 213 KB, tanpa pasang | Dijalankan dari flashdisk atau folder jaringan, atau di PC yang melarang pemasangan. Tinggal klik dua kali. |
+| **`VideoMerger.exe`** — satu file 367 KB, tanpa pasang | Dijalankan dari flashdisk atau folder jaringan, atau di PC yang melarang pemasangan. Tinggal klik dua kali. |
 
-Keduanya tersedia di [halaman Releases](../../releases). Installernya 2 MB.
+Keduanya tersedia di [halaman Releases](../../releases). Installernya 2,6 MB.
 
 > Aplikasi ini belum ditandatangani secara digital, jadi Windows SmartScreen mungkin
 > menampilkan peringatan saat pertama dijalankan. Klik **More info → Run anyway**.
@@ -344,7 +344,7 @@ build.bat          REM bangun saja
 build.bat test     REM bangun lalu jalankan 119 tes
 ```
 
-Hasilnya `dist\VideoMerger.exe`, **satu berkas 213 KB**.
+Hasilnya `dist\VideoMerger.exe`, **satu berkas 367 KB**.
 
 `VideoMerger.Core.dll` ditanam ke dalam exe sebagai *embedded resource* dan dimuat
 lewat `AssemblyResolve`, supaya menyalin exe-nya sendirian ke flashdisk tetap
@@ -359,7 +359,7 @@ di sini:
   pemuatannya terjadi sebelum `AssemblyResolve` sempat terpasang.
 
 FFmpeg sengaja **tidak** dibundel: `ffmpeg.exe` build lengkap berukuran 217 MB,
-sehingga aplikasi 213 KB akan membengkak jadi ratusan MB.
+sehingga aplikasi 367 KB akan membengkak jadi ratusan MB.
 
 ### Membuat installer
 
