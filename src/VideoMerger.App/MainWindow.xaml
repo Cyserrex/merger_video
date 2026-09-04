@@ -360,13 +360,19 @@
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                             <TextBlock Text="Encoder" Margin="0,0,8,0"/>
                             <ComboBox x:Name="CmbSubEncoder" Width="250"
-                                      SelectionChanged="OnSubEncoderChanged"/>
+                                      SelectionChanged="OnSubEncoderChanged"
+                                      ToolTip="Dipakai bersama dengan tab Gabungkan Video &#8212; mengubahnya di sini juga mengubahnya di sana."/>
                             <Button x:Name="BtnSubBenchmark" Style="{StaticResource BtnLink}"
                                     Content="Uji ulang" Margin="4,0,0,0"
                                     Click="OnRunBenchmark"/>
-                            <TextBlock Style="{StaticResource Hint}" Margin="14,0,0,0"
-                                       VerticalAlignment="Center"
-                                       Text="dipakai bersama dengan tab Gabungkan Video"/>
+                            <!-- Keterangan hidup, bukan teks tetap: menekan
+                                 "Uji ulang" dari tab ini dulu menampilkan
+                                 kemajuannya HANYA di tab satunya, yang justru
+                                 tidak sedang dilihat. -->
+                            <TextBlock x:Name="LblSubEncoderNote"
+                                       Style="{StaticResource Hint}" Margin="14,0,0,0"
+                                       VerticalAlignment="Center" Text=""
+                                       TextTrimming="CharacterEllipsis" MaxWidth="420"/>
                         </StackPanel>
                     </StackPanel>
                 </Grid>

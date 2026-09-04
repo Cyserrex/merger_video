@@ -16,7 +16,7 @@ Ada dua cara, keduanya sah:
 | Berkas | Untuk siapa |
 |---|---|
 | **`VideoMerger-1.2.0-Setup.exe`** — installer | Pemakaian biasa. Membuat pintasan Start Menu / Desktop, terdaftar di *Apps & features*, bisa dihapus rapi. Bisa dipasang **tanpa hak administrator** — pilih "Pasang hanya untuk saya". |
-| **`VideoMerger.exe`** — satu file 383 KB, tanpa pasang | Dijalankan dari flashdisk atau folder jaringan, atau di PC yang melarang pemasangan. Tinggal klik dua kali. |
+| **`VideoMerger.exe`** — satu file 385 KB, tanpa pasang | Dijalankan dari flashdisk atau folder jaringan, atau di PC yang melarang pemasangan. Tinggal klik dua kali. |
 
 Keduanya tersedia di [halaman Releases](../../releases). Installernya 2,5 MB.
 
@@ -420,10 +420,10 @@ Lalu:
 
 ```bat
 build.bat          REM bangun saja
-build.bat test     REM bangun lalu jalankan 133 tes
+build.bat test     REM bangun lalu jalankan 159 tes
 ```
 
-Hasilnya `dist\VideoMerger.exe`, **satu berkas 383 KB**.
+Hasilnya `dist\VideoMerger.exe`, **satu berkas 385 KB**.
 
 `VideoMerger.Core.dll` ditanam ke dalam exe sebagai *embedded resource* dan dimuat
 lewat `AssemblyResolve`, supaya menyalin exe-nya sendirian ke flashdisk tetap
@@ -438,7 +438,7 @@ di sini:
   pemuatannya terjadi sebelum `AssemblyResolve` sempat terpasang.
 
 FFmpeg sengaja **tidak** dibundel: `ffmpeg.exe` build lengkap berukuran 217 MB,
-sehingga aplikasi 383 KB akan membengkak jadi ratusan MB.
+sehingga aplikasi 385 KB akan membengkak jadi ratusan MB.
 
 ### Membuat installer
 
@@ -476,7 +476,7 @@ C:\uji\vm\unins000.exe /VERYSILENT
 dotnet run --project src\VideoMerger.Tests -c Release
 ```
 
-133 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
+159 tes, semuanya menjalankan FFmpeg sungguhan. Beberapa di antaranya lebih dulu
 **membuktikan** kerusakannya nyata sebelum memeriksa bahwa aplikasi menolaknya.
 
 Tes hardsub-nya juga tidak percaya pada kode keluar: video sumbernya **hitam polos**,
@@ -513,7 +513,7 @@ src/
     Rows.cs                 pembungkus baris tabel (INotifyPropertyChanged)
     Cli.cs                  antarmuka baris perintah
     EmbeddedAssemblies.cs   memuat Core.dll dari dalam exe
-  VideoMerger.Tests/        133 tes, semuanya menjalankan FFmpeg sungguhan
+  VideoMerger.Tests/        159 tes, semuanya menjalankan FFmpeg sungguhan
 build.bat                   bangun exe
 build_installer.bat         bangun exe + installer
 installer/setup.iss         skrip Inno Setup

@@ -305,7 +305,7 @@ namespace VideoMerger.App
             UpdateActionButton();
             BtnCancel.IsEnabled = true;
             LblStatus.Text = "Mengukur kecepatan encoder...";
-            LblEncoderNote.Text = "Mengukur kecepatan encoder...";
+            SetEncoderNote("Mengukur kecepatan encoder...");
             // Kotak yang benar-benar kosong terbaca sebagai aplikasi rusak,
             // bukan sebagai sesuatu yang sedang bekerja.
             CmbEncoder.SelectionChanged -= OnEncoderChanged;
@@ -324,8 +324,8 @@ namespace VideoMerger.App
                 var scores = EncoderBenchmark.Measure(
                     tools, new TargetSpec(),
                     (done, total, label) => Dispatcher.BeginInvoke(new Action(() =>
-                        LblEncoderNote.Text = "Mengukur " + (done + 1) + "/" + total
-                                              + ": " + label + "..."),
+                        SetEncoderNote("Mengukur " + (done + 1) + "/" + total
+                                       + ": " + label + "...")),
                         DispatcherPriority.Background),
                     () => token.IsCancellationRequested);
                 bool complete = !token.IsCancellationRequested
@@ -475,8 +475,7 @@ namespace VideoMerger.App
             CmbEncoder.SelectionChanged += OnEncoderChanged;
             CmbSubEncoder.SelectionChanged += OnSubEncoderChanged;
 
-            LblEncoderNote.Text = EncoderNote();
-            LblEncoderNote.ToolTip = LblEncoderNote.Text;
+            SetEncoderNote(EncoderNote());
         }
 
         /// <summary>
@@ -514,6 +513,20 @@ namespace VideoMerger.App
             combo.Items.Add("Mengukur kecepatan...");
             combo.SelectedIndex = 0;
             combo.IsEnabled = false;
+        }
+
+        /// <summary>
+        /// Tulis keterangan encoder ke KEDUA tab sekaligus. Ada satu fungsi
+        /// untuk ini karena tab Subtitle punya tombol "Uji ulang" sendiri:
+        /// menulis hanya ke label tab Gabungkan membuat kemajuannya muncul di
+        /// tab yang justru tidak sedang dilihat.
+        /// </summary>
+        private void SetEncoderNote(string text)
+        {
+            LblEncoderNote.Text = text;
+            LblEncoderNote.ToolTip = text;
+            LblSubEncoderNote.Text = text;
+            LblSubEncoderNote.ToolTip = text;
         }
 
         /// <summary>Keterangan ringkas di samping kotak pilihan.</summary>
@@ -948,7 +961,18 @@ namespace VideoMerger.App
         {
             if (BusyGuard()) return;
             var folders = GetRecent(key);
+            int before = folders.Count;
             folders.RemoveAll(f => !Directory.Exists(f));
+            if (folders.Count != before)
+            {
+                // Simpan hasil penyaringannya, jangan hanya sembunyikan.
+                // Daftarnya dibatasi 8 entri; folder yang sudah tidak ada -
+                // flashdisk yang dicabut, drive jaringan yang putus - kalau
+                // dibiarkan akan terus memakan jatah itu selamanya sementara
+                // yang benar-benar dipakai terdorong keluar.
+                _settings.Set(key, string.Join("|", folders));
+                _settings.Save();
+            }
             if (folders.Count == 0)
             {
                 MessageBox.Show("Belum ada folder yang tercatat.", AppInfo.Name,

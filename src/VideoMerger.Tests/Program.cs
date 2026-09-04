@@ -42,6 +42,8 @@ namespace VideoMerger.Tests
                 new KeyValuePair<string, Action>("pengaturan", TestSettings),
                 new KeyValuePair<string, Action>("encoder", TestEncoderSelection),
                 new KeyValuePair<string, Action>("pembaruan", TestUpdateCheck),
+                new KeyValuePair<string, Action>("perkiraan", TestEstimates),
+                new KeyValuePair<string, Action>("riwayat folder", TestRecentFolders),
             };
 
             try
@@ -1107,6 +1109,205 @@ namespace VideoMerger.Tests
                   Hardware.Fingerprint(Tools) != Hardware.Fingerprint(other), "");
             Check("sidik jari stabil untuk masukan sama",
                   Hardware.Fingerprint(Tools) == Hardware.Fingerprint(Tools), "");
+        }
+
+
+        // =================================================== [14] perkiraan
+        /// <summary>Klip buatan dengan geometri tertentu, tanpa menyentuh disk.</summary>
+        private static VideoFile FakeClip(int w, int h, double fps,
+                                          double duration, long size)
+        {
+            return new VideoFile
+            {
+                Path = @"C:\uji\" + w + "x" + h + "_" + size + ".mp4",
+                Width = w, Height = h, Fps = fps, Duration = duration, Size = size,
+                Valid = true, Selected = true, HasVideo = true,
+                VCodec = "h264", PixFmt = "yuv420p", VTimeBase = "1/15360",
+                VRate = "30/1", Sar = "1:1",
+            };
+        }
+
+        /// <summary>
+        /// Fungsi perkiraan yang dipakai tampilan SEBELUM proses dimulai:
+        /// ukuran hasil, puncak ruang disk, dan geometri keluaran.
+        ///
+        /// Semuanya fungsi murni dan gampang meleset tanpa gejala - perkiraan
+        /// yang terlalu besar menolak memulai proses yang sebenarnya muat,
+        /// perkiraan yang terlalu kecil membiarkannya mati di tengah jalan
+        /// karena disk penuh.
+        /// </summary>
+        private static void TestEstimates()
+        {
+            Console.WriteLine("\n[14] Perkiraan ukuran, ruang disk, dan geometri");
+
+            // -- geometri: mayoritas, bukan yang pertama --------------------
+            var mixed = new List<VideoFile>
+            {
+                FakeClip(1920, 1080, 30, 10, 100),      // satu 1080p30
+                FakeClip(640, 480, 25, 10, 100),        // tiga 480p25
+                FakeClip(640, 480, 25, 10, 100),
+                FakeClip(640, 480, 25, 10, 100),
+            };
+            int w, h; double fps;
+            bool have = Merger.EstimateGeometry(mixed, out w, out h, out fps);
+            Check("geometri memakai resolusi mayoritas",
+                  have && w == 640 && h == 480, w + "x" + h);
+            Check("geometri memakai fps mayoritas",
+                  Math.Abs(fps - 25) < 0.01,
+                  fps.ToString("0.##", CultureInfo.InvariantCulture));
+
+            Check("daftar kosong mundur ke 1920x1080 tanpa menabrak",
+                  !Merger.EstimateGeometry(new List<VideoFile>(), out w, out h, out fps)
+                  && w == 1920 && h == 1080, w + "x" + h);
+            Check("null tidak menabrak",
+                  !Merger.EstimateGeometry(null, out w, out h, out fps), "");
+            Check("klip yang belum diperiksa mundur ke nilai bawaan",
+                  !Merger.EstimateGeometry(
+                      new List<VideoFile> { new VideoFile { Duration = 10 } },
+                      out w, out h, out fps) && w == 1920, w + "x" + h);
+
+            // -- ukuran hasil ------------------------------------------------
+            // 100 klip 720p25 @5 menit: kasus yang jadi sasaran aplikasi ini.
+            var many = new List<VideoFile>();
+            for (int i = 0; i < 100; i++)
+                many.Add(FakeClip(1280, 720, 25, 300, 300L * 1024 * 1024));
+
+            long inBytes = 100L * 300 * 1024 * 1024;
+            long copyBytes = Merger.EstimateOutputBytes(many, MergeMode.Copy);
+            Check("mode salin diperkirakan sebesar masukannya",
+                  copyBytes > inBytes && copyBytes < (long)(inBytes * 1.1),
+                  Humanize.Size(copyBytes) + " dari " + Humanize.Size(inBytes));
+
+            long reBytes = Merger.EstimateOutputBytes(many, MergeMode.Reencode);
+            // Rumus lama yang memakai MB/detik tetap menuntut 126 GB di sini,
+            // dan itu menolak memulai di disk mana pun yang wajar.
+            Check("encode ulang 720p 8 jam diperkirakan wajar (1-30 GB)",
+                  reBytes > 1L * 1024 * 1024 * 1024
+                  && reBytes < 30L * 1024 * 1024 * 1024,
+                  Humanize.Size(reBytes));
+            Check("encode ulang jauh lebih kecil daripada masukannya",
+                  reBytes < copyBytes,
+                  Humanize.Size(reBytes) + " vs " + Humanize.Size(copyBytes));
+
+            // Resolusi memang harus mengubah perkiraan - kalau tidak, rumusnya
+            // mengabaikan geometri dan angkanya cuma hiasan.
+            var small = new List<VideoFile>();
+            for (int i = 0; i < 100; i++)
+                small.Add(FakeClip(640, 480, 25, 300, 300L * 1024 * 1024));
+            Check("sumber beresolusi kecil diperkirakan lebih kecil",
+                  Merger.EstimateOutputBytes(small, MergeMode.Reencode) < reBytes,
+                  Humanize.Size(Merger.EstimateOutputBytes(small, MergeMode.Reencode)));
+
+            // -- puncak ruang disk -------------------------------------------
+            Check("puncak disk mode salin sama dengan ukuran hasil",
+                  Merger.PeakDiskNeed(many, MergeMode.Copy) == copyBytes, "");
+            // Klip ternormalisasi hidup berdampingan dengan berkas akhir
+            // sampai penyambungan selesai.
+            Check("puncak disk encode ulang dua kali ukuran hasil",
+                  Merger.PeakDiskNeed(many, MergeMode.Reencode) == reBytes * 2, "");
+
+            Check("daftar kosong tidak menabrak",
+                  Merger.EstimateOutputBytes(new List<VideoFile>(),
+                                             MergeMode.Copy) == 0, "");
+            Check("null tidak menabrak",
+                  Merger.EstimateOutputBytes(null, MergeMode.Reencode) == 0, "");
+
+            // -- tanda tangan mayoritas ---------------------------------------
+            var odd = FakeClip(320, 240, 25, 10, 100);
+            var group = new List<VideoFile>
+            {
+                FakeClip(640, 480, 25, 10, 100),
+                FakeClip(640, 480, 25, 10, 100),
+                odd,
+            };
+            string majority = Merger.MajoritySignature(group);
+            Check("mayoritas bukan klip yang menyimpang",
+                  majority == group[0].CopySignature()
+                  && majority != odd.CopySignature(), "");
+
+            // -- format drive dan deteksi FAT32 -------------------------------
+            string fmt = Paths.DriveFormat(Path.GetTempPath());
+            Check("format drive terbaca", !string.IsNullOrEmpty(fmt), fmt);
+            // Jalur yang belum ada harus naik ke folder induknya, bukan gagal:
+            // folder tujuan sering belum dibuat saat perkiraan dihitung.
+            Check("jalur yang belum ada tetap mengembalikan format",
+                  !string.IsNullOrEmpty(Paths.DriveFormat(
+                      Path.Combine(Path.GetTempPath(), "belum", "ada", "sama", "sekali"))),
+                  "");
+
+            // exFAT memuat huruf "FAT" tetapi TIDAK punya batas 4 GB.
+            // Menyamakannya berarti memperingatkan orang tanpa alasan.
+            foreach (var pair in new[]
+                     {
+                         Tuple.Create("FAT32", true), Tuple.Create("FAT", true),
+                         Tuple.Create("exFAT", false), Tuple.Create("NTFS", false),
+                     })
+            {
+                bool isFat = pair.Item1.IndexOf("FAT",
+                                 StringComparison.OrdinalIgnoreCase) >= 0
+                             && pair.Item1.IndexOf("exFAT",
+                                 StringComparison.OrdinalIgnoreCase) < 0;
+                Check("deteksi batas 4 GB untuk " + pair.Item1,
+                      isFat == pair.Item2, "isFat=" + isFat);
+            }
+        }
+
+        // ============================================== [15] riwayat folder
+        /// <summary>
+        /// Daftar folder terakhir disimpan sebagai satu baris dipisah "|" di
+        /// dalam berkas pengaturan yang juga berformat baris key=value.
+        /// Jalur Windows penuh backslash dan jalur UNC diawali dua backslash,
+        /// jadi kalau escape-nya salah daftarnya kembali dalam keadaan rusak -
+        /// dan tidak ada gejala apa pun sampai seseorang membukanya.
+        /// </summary>
+        private static void TestRecentFolders()
+        {
+            Console.WriteLine("\n[15] Daftar folder terakhir bertahan lewat penyimpanan");
+
+            string cfg = AppSettings.ConfigPath();
+            string backup = cfg + ".testbak";
+            bool had = File.Exists(cfg);
+            if (had) File.Copy(cfg, backup, true);
+            try
+            {
+                string[] folders =
+                {
+                    @"C:\Video\Rekaman CCTV",
+                    @"D:\Arsip\2024",
+                    @"\\server\share\video",
+                };
+                string joined = string.Join("|", folders);
+
+                var write = new AppSettings();
+                write.Set("recent_input_dirs", joined);
+                Check("pengaturan tersimpan", write.Save(), "");
+
+                var read = AppSettings.Load();
+                string got = read["recent_input_dirs"];
+                Check("daftar terbaca kembali persis sama", got == joined, got);
+
+                string[] parts = got.Split('|');
+                Check("jumlah folder tetap", parts.Length == 3,
+                      parts.Length.ToString(CultureInfo.InvariantCulture));
+                Check("backslash tunggal tidak berlipat",
+                      parts.Length > 0 && parts[0] == folders[0],
+                      parts.Length > 0 ? parts[0] : "-");
+                Check("jalur UNC dua backslash utuh",
+                      parts.Length > 2 && parts[2] == folders[2],
+                      parts.Length > 2 ? parts[2] : "-");
+
+                // Kunci yang tidak dikenal harus diabaikan, bukan ikut tersimpan:
+                // berkas dari versi lebih baru tidak boleh menyeret setelan yang
+                // tidak dimengerti versi ini.
+                var stray = AppSettings.Load();
+                Check("kunci tak dikenal tidak muncul dari mana-mana",
+                      stray["kunci_yang_tidak_ada"] == "", "");
+            }
+            finally
+            {
+                if (had) { File.Copy(backup, cfg, true); File.Delete(backup); }
+                else if (File.Exists(cfg)) File.Delete(cfg);
+            }
         }
 
         private class AppSettingsProbe
